@@ -4,7 +4,8 @@ from config import FORWARD_DAYS
 
 def add_features(df: pd.DataFrame,
                  macro_df: pd.DataFrame = None,
-                 sentiment_series: pd.Series = None) -> pd.DataFrame:
+                 sentiment_series: pd.Series = None,
+                 earnings_df: pd.DataFrame = None) -> pd.DataFrame:
     df = df.copy()
 
     # Returns
@@ -54,15 +55,33 @@ def add_features(df: pd.DataFrame,
     if macro_df is not None:
         from macro_loader import get_macro_feature_columns
         macro_cols = get_macro_feature_columns()
-        df = df.join(macro_df[macro_cols], how="left")
+        # Ensure both indexes are timezone-naive before joining
+        macro_aligned = macro_df[macro_cols].copy()
+        if macro_aligned.index.tzinfo is not None:
+            macro_aligned.index = macro_aligned.index.tz_localize(None)
+        if df.index.tzinfo is not None:
+            df.index = df.index.tz_localize(None)
+        df = df.join(macro_aligned, how="left")
         df[macro_cols] = df[macro_cols].ffill()
 
     # Sentiment
     if sentiment_series is not None:
-        df = df.join(sentiment_series.rename("sentiment"), how="left")
+        s = sentiment_series.copy()
+        # Strip timezone if present
+        if s.index.tzinfo is not None:
+            s.index = s.index.tz_localize(None)
+        df = df.join(s.rename("sentiment"), how="left")
         df["sentiment"]        = df["sentiment"].ffill().fillna(0.0)
         df["sentiment_change"] = df["sentiment"].diff(1)
         df["sentiment_ma5"]    = df["sentiment"].rolling(5).mean()
+
+    # Earnings
+    if earnings_df is not None:
+        from earnings_loader import get_earnings_feature_columns
+        earn_cols = get_earnings_feature_columns()
+        for col in earn_cols:
+            if col in earnings_df.columns:
+                df[col] = earnings_df[col].values
 
     # Target
     df["target"] = (df["Close"].shift(-FORWARD_DAYS) > df["Close"]).astype(int)
@@ -70,7 +89,9 @@ def add_features(df: pd.DataFrame,
     df.dropna(inplace=True)
     return df
 
-def get_feature_columns(include_macro=True, include_sentiment=True) -> list:
+def get_feature_columns(include_macro=True,
+                        include_sentiment=True,
+                        include_earnings=True) -> list:
     base = [
         "return_1d", "return_5d", "return_10d",
         "price_to_ma10", "price_to_ma50", "ma_cross",
@@ -88,4 +109,10 @@ def get_feature_columns(include_macro=True, include_sentiment=True) -> list:
         ]
     if include_sentiment:
         base += ["sentiment", "sentiment_change", "sentiment_ma5"]
+    if include_earnings:
+        base += [
+            "eps_surprise", "rev_surprise",
+            "days_to_earnings", "days_since_earnings",
+            "pead_signal",
+        ]
     return base

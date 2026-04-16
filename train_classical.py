@@ -10,20 +10,25 @@ from config import TRAIN_RATIO, VAL_RATIO
 from data_loader import load_all_tickers
 from macro_loader import fetch_macro
 from sentiment_loader import load_all_sentiment
+from earnings_loader import load_all_earnings
 from features import add_features, get_feature_columns
 from splitter import time_split
 
-def train_ticker(ticker: str, df, macro_df=None, sentiment=None):
+def train_ticker(ticker, df, macro_df=None, sentiment=None, earnings=None):
     print(f"\n{'─'*40}")
     print(f"  Ticker: {ticker}")
     print(f"{'─'*40}")
 
     sentiment_series = sentiment.get(ticker) if sentiment else None
+    earnings_df      = earnings.get(ticker)  if earnings  else None
+
     df        = add_features(df, macro_df=macro_df,
-                             sentiment_series=sentiment_series)
+                             sentiment_series=sentiment_series,
+                             earnings_df=earnings_df)
     feat_cols = get_feature_columns(
         include_macro=macro_df is not None,
-        include_sentiment=sentiment_series is not None
+        include_sentiment=sentiment_series is not None,
+        include_earnings=earnings_df is not None,
     )
     feat_cols = [c for c in feat_cols if c in df.columns]
 
@@ -64,11 +69,12 @@ def train_ticker(ticker: str, df, macro_df=None, sentiment=None):
 
     print()
     for name, scores in results.items():
-        print(f"  {name:<12} Val AUC: {scores['val_auc']:.4f}  |  Test AUC: {scores['test_auc']:.4f}")
+        print(f"  {name:<12} Val AUC: {scores['val_auc']:.4f}  |  "
+              f"Test AUC: {scores['test_auc']:.4f}")
 
     return results
 
-def train_combined(all_data, macro_df=None, sentiment=None):
+def train_combined(all_data, macro_df=None, sentiment=None, earnings=None):
     print(f"\n{'═'*40}")
     print("  COMBINED MODEL — all tickers")
     print(f"{'═'*40}")
@@ -78,8 +84,11 @@ def train_combined(all_data, macro_df=None, sentiment=None):
 
     for ticker, df in all_data.items():
         sentiment_series = sentiment.get(ticker) if sentiment else None
+        earnings_df      = earnings.get(ticker)  if earnings  else None
+
         df_feat = add_features(df.copy(), macro_df=macro_df,
-                               sentiment_series=sentiment_series)
+                               sentiment_series=sentiment_series,
+                               earnings_df=earnings_df)
         df_feat["ticker_id"] = ticker_list.index(ticker)
 
         n         = len(df_feat)
@@ -96,7 +105,8 @@ def train_combined(all_data, macro_df=None, sentiment=None):
 
     feat_cols = get_feature_columns(
         include_macro=macro_df is not None,
-        include_sentiment=sentiment is not None
+        include_sentiment=sentiment is not None,
+        include_earnings=earnings is not None,
     ) + ["ticker_id"]
     feat_cols = [c for c in feat_cols if c in train_df.columns]
 
@@ -140,12 +150,16 @@ if __name__ == "__main__":
     all_data  = load_all_tickers()
     macro_df  = fetch_macro()
     sentiment = load_all_sentiment()
+    earnings  = load_all_earnings(all_data)
 
     all_results = {}
     for ticker, df in all_data.items():
-        all_results[ticker] = train_ticker(ticker, df,
-                                           macro_df=macro_df,
-                                           sentiment=sentiment)
+        all_results[ticker] = train_ticker(
+            ticker, df,
+            macro_df=macro_df,
+            sentiment=sentiment,
+            earnings=earnings,
+        )
 
     print(f"\n{'═'*50}")
     print("  SUMMARY — XGBoost Test AUC per ticker")
@@ -153,4 +167,5 @@ if __name__ == "__main__":
     for ticker, res in all_results.items():
         print(f"  {ticker:<6} {res['XGBoost']['test_auc']:.4f}")
 
-    train_combined(all_data, macro_df=macro_df, sentiment=sentiment)
+    train_combined(all_data, macro_df=macro_df,
+                   sentiment=sentiment, earnings=earnings)

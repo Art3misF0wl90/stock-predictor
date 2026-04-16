@@ -57,16 +57,39 @@ def fetch_news_with_retry(client, ticker, max_articles=5000):
         print(f"  Warning: stopped early for {ticker}: {e}")
     return articles
 
+def parse_article_date(published_utc) -> pd.Timestamp:
+    """
+    Robustly parses Massive API timestamps into timezone-naive dates.
+    Massive returns ISO 8601 UTC strings like '2023-01-15T14:32:00Z'.
+    We must strip timezone info to match the price DataFrame's naive index.
+    """
+    try:
+        ts = pd.Timestamp(published_utc)
+        # If timezone-aware, convert to UTC then strip tz info
+        if ts.tzinfo is not None:
+            ts = ts.tz_convert("UTC").tz_localize(None)
+        return ts.normalize()  # floor to midnight
+    except Exception:
+        return None
+
 def build_sentiment_series(ticker, tokenizer, model, device):
     cache_path = os.path.join("data", f"{ticker}_sentiment.csv")
+
     if os.path.exists(cache_path):
         print(f"  Loading {ticker} sentiment from cache...")
         df = pd.read_csv(cache_path, index_col="Date", parse_dates=True)
-        return df["sentiment"]
+        # Verify cache has actual signal — if all zeros, re-fetch
+        if (df["sentiment"] != 0).sum() == 0:
+            print(f"  Cache has no signal — re-fetching {ticker}...")
+            os.remove(cache_path)
+        else:
+            return df["sentiment"]
 
     client   = RESTClient(api_key=MASSIVE_API_KEY)
     raw      = fetch_news_with_retry(client, ticker)
     full_idx = pd.date_range(start=START_DATE, end=END_DATE, freq="B")
+    # Ensure index is timezone-naive
+    full_idx = full_idx.tz_localize(None)
 
     if not raw:
         print(f"  No articles for {ticker} — using neutral")
@@ -78,32 +101,56 @@ def build_sentiment_series(ticker, tokenizer, model, device):
     records = []
     for article in raw:
         try:
-            pub_date = pd.Timestamp(article.published_utc).normalize()
+            pub_date = parse_article_date(article.published_utc)
             title    = article.title or ""
-            if title:
+            if pub_date is not None and title:
                 records.append({"date": pub_date, "title": title})
         except Exception:
             continue
+
+    if not records:
+        print(f"  No parseable articles for {ticker}")
+        series = pd.Series(0.0, index=full_idx, name="sentiment")
+        series.index.name = "Date"
+        series.to_csv(cache_path, header=True)
+        return series
 
     print(f"  Scoring {len(records)} headlines with FinBERT...")
     titles = [r["title"] for r in records]
     scores = score_headlines(titles, tokenizer, model, device)
 
-    df = pd.DataFrame(records)
+    df          = pd.DataFrame(records)
     df["score"] = scores
-    df = df.set_index("date")
-    df.index = pd.DatetimeIndex(df.index).normalize()
+    df["date"]  = pd.to_datetime(df["date"]).dt.tz_localize(None).dt.normalize()
+    df          = df.set_index("date")
+    df          = df.sort_index()
 
+    # Diagnostic — show score distribution before aggregating
+    non_neutral = (df["score"] != 0).sum()
+    print(f"  Score distribution: "
+          f"positive={( df['score']  > 0).sum()} "
+          f"negative={(df['score']  < 0).sum()} "
+          f"neutral={(df['score'] == 0).sum()} "
+          f"total={len(df)}")
+
+    # Daily average — multiple articles per day get averaged
     daily = df["score"].resample("D").mean()
+
+    # Reindex to full business day range — timezone-naive on both sides
     daily = daily.reindex(full_idx)
+
+    # Rolling average to smooth noise
     daily = daily.rolling(SENTIMENT_LOOKBACK_DAYS, min_periods=1).mean()
     daily = daily.fillna(0.0)
     daily.index.name = "Date"
     daily.name       = "sentiment"
 
-    daily.to_csv(cache_path, header=True)
+    # Final diagnostic
     non_zero = (daily != 0).sum()
-    print(f"  {ticker}: {non_zero} days with signal | mean={daily.mean():.4f}")
+    print(f"  {ticker}: {non_zero}/{len(daily)} days have signal "
+          f"| mean={daily[daily!=0].mean():.4f}")
+
+    daily.to_csv(cache_path, header=True)
     return daily
 
 def load_all_sentiment():
@@ -113,17 +160,40 @@ def load_all_sentiment():
         print(f"\nProcessing {ticker}...")
         cache_path = os.path.join("data", f"{ticker}_sentiment.csv")
         if os.path.exists(cache_path):
-            sentiment[ticker] = build_sentiment_series(ticker, tokenizer, model, device)
-        else:
-            sentiment[ticker] = build_sentiment_series(ticker, tokenizer, model, device)
-            if ticker != TICKERS[-1]:
-                print(f"  Waiting 60s before next ticker...")
-                time.sleep(60)
+            # Check if cached data has actual signal
+            df = pd.read_csv(cache_path, index_col="Date", parse_dates=True)
+            if (df["sentiment"] != 0).sum() > 0:
+                print(f"  Loading {ticker} sentiment from cache...")
+                sentiment[ticker] = df["sentiment"]
+                continue
+            else:
+                print(f"  Cache empty — re-fetching {ticker}...")
+                os.remove(cache_path)
+
+        sentiment[ticker] = build_sentiment_series(
+            ticker, tokenizer, model, device)
+
+        if ticker != TICKERS[-1]:
+            print(f"  Waiting 60s before next ticker...")
+            time.sleep(60)
+
     return sentiment
 
 if __name__ == "__main__":
+    for ticker in TICKERS:
+        path = os.path.join("data", f"{ticker}_sentiment.csv")
+        if os.path.exists(path):
+            df = pd.read_csv(path, index_col="Date", parse_dates=True)
+            if (df["sentiment"] != 0).sum() == 0:
+                print(f"Removing empty cache for {ticker}")
+                os.remove(path)
+
     print("Building sentiment series with Massive + FinBERT...")
-    data = load_all_sentiment()
-    for t, s in data.items():
+    tokenizer, model, device = load_finbert()
+    for ticker in TICKERS:
+        print(f"\n{ticker}:")
+        s = build_sentiment_series(ticker, tokenizer, model, device)
         non_zero = (s != 0).sum()
-        print(f"{t}: {non_zero} days with signal out of {len(s)} total")
+        print(f"  Result: {non_zero} days with signal")
+        if ticker != TICKERS[-1]:
+            time.sleep(60)

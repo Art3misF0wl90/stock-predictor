@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+stock_env/
+data/
+models/
+charts/
+notebooks/
+.env
+*.env
+.DS_Store
+Thumbs.db

@@ -20,3 +20,11 @@ MACRO_TICKERS = {
 }
 
 SENTIMENT_LOOKBACK_DAYS = 3
+
+# Holding period analysis
+# How many trading days to track returns after each signal
+HOLDING_PERIODS = [5, 21, 63, 126]
+# 5   = 1 week
+# 21  = 1 month
+# 63  = 1 quarter
+# 126 = 6 months

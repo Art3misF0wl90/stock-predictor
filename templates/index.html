@@ -17,39 +17,74 @@
       flex-direction: column;
     }
 
-    /* ── Header ── */
     header {
       background: #1a1d2e;
       border-bottom: 1px solid #2d3748;
-      padding: 16px 24px;
+      padding: 14px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 16px;
     }
 
-    header h1 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #63b3ed;
-      letter-spacing: 0.5px;
+    header h1 { font-size: 17px; font-weight: 600; color: #63b3ed; }
+    .header-date { font-size: 13px; color: #718096; white-space: nowrap; }
+
+    /* ── Ticker search bar ── */
+    .ticker-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      max-width: 320px;
     }
 
-    .header-date {
+    .ticker-input {
+      flex: 1;
+      background: #242736;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      padding: 7px 12px;
+      color: #e2e8f0;
       font-size: 13px;
-      color: #718096;
+      outline: none;
+      text-transform: uppercase;
+      transition: border-color 0.2s;
     }
 
-    /* ── Layout ── */
+    .ticker-input:focus { border-color: #63b3ed; }
+    .ticker-input::placeholder { color: #4a5568; text-transform: none; }
+
+    .btn {
+      background: #2b6cb0;
+      color: white;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn:hover    { background: #3182ce; }
+    .btn:disabled { background: #2d3748; color: #718096; cursor: not-allowed; }
+    .btn-sm       { padding: 5px 10px; font-size: 12px; }
+    .btn-green    { background: #276749; }
+    .btn-green:hover { background: #2f855a; }
+    .btn-red      { background: #742a2a; }
+    .btn-red:hover { background: #9b2c2c; }
+
     .main {
       display: flex;
       flex: 1;
       overflow: hidden;
     }
 
-    /* ── Left panel — dashboard ── */
+    /* ── Dashboard ── */
     .dashboard {
-      width: 420px;
-      min-width: 420px;
+      width: 440px;
+      min-width: 440px;
       background: #1a1d2e;
       border-right: 1px solid #2d3748;
       overflow-y: auto;
@@ -68,7 +103,6 @@
       margin-bottom: 12px;
     }
 
-    /* ── Macro cards ── */
     .macro-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -83,43 +117,25 @@
       text-align: center;
     }
 
-    .macro-card .label {
-      font-size: 11px;
-      color: #718096;
-      margin-bottom: 4px;
-    }
-
-    .macro-card .value {
-      font-size: 20px;
-      font-weight: 700;
-      color: #e2e8f0;
-    }
-
-    .macro-card .change {
-      font-size: 11px;
-      margin-top: 2px;
-    }
+    .macro-card .label { font-size: 11px; color: #718096; margin-bottom: 4px; }
+    .macro-card .value { font-size: 20px; font-weight: 700; }
+    .macro-card .change { font-size: 11px; margin-top: 2px; }
 
     .fear-badge {
       display: inline-block;
-      padding: 2px 8px;
+      padding: 2px 10px;
       border-radius: 10px;
       font-size: 11px;
       font-weight: 600;
-      margin-top: 6px;
+      margin-top: 8px;
     }
 
-    .fear-Low     { background: #1a4731; color: #48bb78; }
-    .fear-Normal  { background: #1a3a4a; color: #63b3ed; }
-    .fear-Elevated{ background: #4a3a1a; color: #ed8936; }
-    .fear-High    { background: #4a1a1a; color: #fc8181; }
+    .fear-Low      { background: #1a4731; color: #48bb78; }
+    .fear-Normal   { background: #1a3a4a; color: #63b3ed; }
+    .fear-Elevated { background: #4a3a1a; color: #ed8936; }
+    .fear-High     { background: #4a1a1a; color: #fc8181; }
 
-    /* ── Signal table ── */
-    .signal-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
+    .signal-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
     .signal-table th {
       text-align: left;
@@ -131,16 +147,14 @@
     }
 
     .signal-table td {
-      padding: 10px 8px;
+      padding: 9px 8px;
       border-bottom: 1px solid #1a1d2e;
     }
 
-    .signal-table tr:hover td {
-      background: #242736;
-    }
+    .signal-table tr:hover td { background: #242736; cursor: pointer; }
 
     .action-badge {
-      padding: 3px 8px;
+      padding: 3px 7px;
       border-radius: 4px;
       font-size: 11px;
       font-weight: 600;
@@ -153,42 +167,134 @@
     .action-HOLD       { background: #2d3748; color: #a0aec0; }
     .action-AVOID      { background: #4a1a1a; color: #fc8181; }
     .action-FILTERED   { background: #2d2a1a; color: #ed8936; }
+    .action-WATCH      { background: #2a2d4a; color: #76e4f7; }
 
     .prob-bar-wrap {
       background: #2d3748;
       border-radius: 3px;
       height: 4px;
-      width: 60px;
+      width: 55px;
       margin-top: 3px;
     }
 
-    .prob-bar {
-      height: 4px;
-      border-radius: 3px;
-      background: #63b3ed;
+    .prob-bar { height: 4px; border-radius: 3px; background: #63b3ed; }
+
+    /* ── Analyze modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
     }
 
-    /* ── Refresh button ── */
-    .btn {
-      background: #2b6cb0;
-      color: white;
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: #1a1d2e;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 24px;
+      width: 480px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-header h3 { font-size: 16px; font-weight: 600; }
+
+    .close-btn {
+      background: none;
       border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 13px;
+      color: #718096;
+      font-size: 20px;
       cursor: pointer;
-      transition: background 0.2s;
+      line-height: 1;
     }
 
-    .btn:hover    { background: #3182ce; }
-    .btn:disabled { background: #2d3748; color: #718096; cursor: not-allowed; }
+    .close-btn:hover { color: #e2e8f0; }
 
-    .btn-sm {
-      padding: 5px 10px;
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      background: #242736;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .stat-card .label { font-size: 11px; color: #718096; margin-bottom: 4px; }
+    .stat-card .value { font-size: 18px; font-weight: 700; }
+
+    .issue-list { list-style: none; margin-bottom: 16px; }
+
+    .issue-list li {
+      padding: 6px 0;
+      border-bottom: 1px solid #2d3748;
+      font-size: 13px;
+      color: #a0aec0;
+    }
+
+    .issue-list li::before { content: "⚠ "; color: #ed8936; }
+
+    .quality-bar-wrap {
+      background: #2d3748;
+      border-radius: 4px;
+      height: 8px;
+      margin: 8px 0 4px;
+    }
+
+    .quality-bar {
+      height: 8px;
+      border-radius: 4px;
+      transition: width 0.5s;
+    }
+
+    .verdict-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 6px;
       font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
     }
 
-    /* ── Right panel — chat ── */
+    .verdict-excellent { background: #1a4731; color: #48bb78; }
+    .verdict-good      { background: #1a3a2a; color: #68d391; }
+    .verdict-marginal  { background: #4a3a1a; color: #ed8936; }
+    .verdict-not       { background: #4a1a1a; color: #fc8181; }
+    .verdict-watchlist { background: #1a3a4a; color: #63b3ed; }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    /* ── Win rates ── */
+    .winrate-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid #2d3748;
+    }
+
+    .winrate-row .ticker-name { font-weight: 600; font-size: 13px; }
+
+    /* ── Chat panel ── */
     .chat-panel {
       flex: 1;
       display: flex;
@@ -197,21 +303,17 @@
     }
 
     .chat-header {
-      padding: 16px 24px;
+      padding: 14px 24px;
       border-bottom: 1px solid #2d3748;
       display: flex;
       align-items: center;
       gap: 10px;
     }
 
-    .chat-header h2 {
-      font-size: 15px;
-      font-weight: 600;
-    }
+    .chat-header h2 { font-size: 15px; font-weight: 600; }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
+      width: 8px; height: 8px;
       border-radius: 50%;
       background: #48bb78;
     }
@@ -235,28 +337,15 @@
       gap: 16px;
     }
 
-    .message {
-      display: flex;
-      gap: 12px;
-      max-width: 85%;
-    }
-
-    .message.user {
-      align-self: flex-end;
-      flex-direction: row-reverse;
-    }
-
-    .message.bot { align-self: flex-start; }
+    .message { display: flex; gap: 12px; max-width: 85%; }
+    .message.user  { align-self: flex-end; flex-direction: row-reverse; }
+    .message.bot   { align-self: flex-start; }
 
     .avatar {
-      width: 32px;
-      height: 32px;
+      width: 32px; height: 32px;
       border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
     }
 
     .avatar.bot  { background: #2b6cb0; }
@@ -267,28 +356,17 @@
       border-radius: 12px;
       font-size: 14px;
       line-height: 1.6;
-      max-width: 100%;
     }
 
     .bot  .bubble { background: #1a1d2e; border: 1px solid #2d3748; }
     .user .bubble { background: #2b6cb0; }
 
-    .timestamp {
-      font-size: 11px;
-      color: #4a5568;
-      margin-top: 4px;
-      text-align: right;
-    }
+    .timestamp { font-size: 11px; color: #4a5568; margin-top: 4px; }
 
-    .thinking-indicator {
-      display: flex;
-      gap: 4px;
-      padding: 8px 0;
-    }
+    .thinking-indicator { display: flex; gap: 4px; padding: 8px 0; }
 
     .dot {
-      width: 6px;
-      height: 6px;
+      width: 6px; height: 6px;
       border-radius: 50%;
       background: #718096;
       animation: bounce 1.2s infinite;
@@ -302,7 +380,6 @@
       40%           { transform: translateY(-6px); }
     }
 
-    /* ── Chat input ── */
     .chat-input-area {
       padding: 16px 24px;
       border-top: 1px solid #2d3748;
@@ -323,10 +400,8 @@
     }
 
     .chat-input:focus { border-color: #63b3ed; }
-
     .chat-input::placeholder { color: #4a5568; }
 
-    /* ── Suggestions ── */
     .suggestions {
       padding: 0 24px 12px;
       display: flex;
@@ -345,15 +420,10 @@
       transition: all 0.2s;
     }
 
-    .suggestion:hover {
-      border-color: #63b3ed;
-      color: #63b3ed;
-    }
+    .suggestion:hover { border-color: #63b3ed; color: #63b3ed; }
 
-    /* ── Loading state ── */
-    .loading { color: #718096; font-size: 13px; text-align: center; }
+    .loading { color: #718096; font-size: 13px; text-align: center; padding: 12px; }
 
-    /* ── Scrollbar ── */
     ::-webkit-scrollbar       { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
@@ -361,20 +431,48 @@
 </head>
 <body>
 
+<!-- Analyze Modal -->
+<div class="modal-overlay" id="analyze-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-ticker-name">Loading...</h3>
+      <button class="close-btn" onclick="closeModal()">×</button>
+    </div>
+
+    <div id="modal-content">
+      <div class="loading">Fetching analysis...</div>
+    </div>
+  </div>
+</div>
+
 <header>
   <h1>📈 Stock Prediction System</h1>
+
+  <!-- Ticker search -->
+  <div class="ticker-search">
+    <input
+      type="text"
+      class="ticker-input"
+      id="ticker-search-input"
+      placeholder="Analyze any ticker..."
+      maxlength="10"
+      onkeydown="if(event.key==='Enter') analyzeTicker()"
+    >
+    <button class="btn btn-sm" onclick="analyzeTicker()">Analyze</button>
+  </div>
+
   <span class="header-date" id="header-date"></span>
 </header>
 
 <div class="main">
 
-  <!-- Dashboard Panel -->
+  <!-- Dashboard -->
   <div class="dashboard">
 
-    <!-- Macro Conditions -->
+    <!-- Macro -->
     <div>
       <div class="section-title">Market Conditions</div>
-      <div class="macro-grid" id="macro-grid">
+      <div class="macro-grid">
         <div class="macro-card">
           <div class="label">VIX</div>
           <div class="value" id="vix-value">—</div>
@@ -389,25 +487,23 @@
           <div class="value" id="dollar-value">—</div>
         </div>
       </div>
-      <div style="margin-top:10px; text-align:center;">
+      <div style="text-align:center; margin-top:10px">
         <span class="fear-badge" id="fear-badge">Loading...</span>
       </div>
     </div>
 
-    <!-- Today's Signals -->
+    <!-- Signals -->
     <div>
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
         <div class="section-title" style="margin-bottom:0">Today's Signals</div>
-        <button class="btn btn-sm" id="refresh-btn" onclick="refreshSignals()">
-          Refresh
-        </button>
+        <button class="btn btn-sm" id="refresh-btn" onclick="refreshSignals()">Refresh</button>
       </div>
       <div id="signals-container">
         <div class="loading">Loading signals...</div>
       </div>
     </div>
 
-    <!-- Model Performance -->
+    <!-- Win rates -->
     <div>
       <div class="section-title">Historical Win Rates (6mo hold)</div>
       <div id="winrates-container">
@@ -417,12 +513,12 @@
 
   </div>
 
-  <!-- Chat Panel -->
+  <!-- Chat -->
   <div class="chat-panel">
     <div class="chat-header">
       <div class="status-dot" id="status-dot"></div>
       <h2>AI Assistant</h2>
-      <span style="font-size:12px; color:#718096;">Powered by Groq + Llama 3.3 70B</span>
+      <span style="font-size:12px; color:#718096">Powered by Groq + Llama 3.3 70B</span>
     </div>
 
     <div class="chat-messages" id="chat-messages">
@@ -430,9 +526,9 @@
         <div class="avatar bot">🤖</div>
         <div>
           <div class="bubble">
-            Hi! I'm your stock prediction assistant. I can explain today's signals,
-            run backtests, analyze market conditions, and answer questions about
-            any ticker in your watchlist. What would you like to know?
+            Hi! I'm your stock prediction assistant. Ask me about any ticker,
+            today's signals, market conditions, or use the search bar above
+            to analyze any stock instantly.
           </div>
         </div>
       </div>
@@ -442,8 +538,9 @@
       <span class="suggestion" onclick="sendSuggestion(this)">What should I buy today?</span>
       <span class="suggestion" onclick="sendSuggestion(this)">Why is TSLA bearish?</span>
       <span class="suggestion" onclick="sendSuggestion(this)">What's the market fear level?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Analyze PLTR for me</span>
       <span class="suggestion" onclick="sendSuggestion(this)">Run a backtest on MSFT</span>
-      <span class="suggestion" onclick="sendSuggestion(this)">Explain NVDA signal</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Should I add COIN to watchlist?</span>
     </div>
 
     <div class="chat-input-area">
@@ -462,17 +559,17 @@
 
 <script>
   const socket = io();
-  let isThinking = false;
-  let thinkingEl = null;
+  let isThinking   = false;
+  let thinkingEl   = null;
+  let currentModal = null;
 
-  // ── Date ──────────────────────────────────────────────────────────────────
   document.getElementById("header-date").textContent =
     new Date().toLocaleDateString("en-US", {
       weekday: "long", year: "numeric",
       month: "long", day: "numeric"
     });
 
-  // ── Socket events ─────────────────────────────────────────────────────────
+  // ── Socket ────────────────────────────────────────────────────────────────
   socket.on("connected", () => {
     document.getElementById("status-dot").classList.remove("thinking");
   });
@@ -486,31 +583,26 @@
   socket.on("response", (data) => {
     isThinking = false;
     document.getElementById("status-dot").classList.remove("thinking");
-    if (thinkingEl) {
-      thinkingEl.remove();
-      thinkingEl = null;
-    }
+    if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
     addMessage("bot", data.message, data.timestamp);
     document.getElementById("chat-input").disabled = false;
     document.getElementById("chat-input").focus();
+
+    // Refresh signals panel in case predictions changed
+    loadSignals();
   });
 
-  // ── Chat functions ────────────────────────────────────────────────────────
+  // ── Chat ──────────────────────────────────────────────────────────────────
   function sendMessage() {
     const input = document.getElementById("chat-input");
     const msg   = input.value.trim();
     if (!msg || isThinking) return;
-
     addMessage("user", msg, new Date().toLocaleTimeString("en-US", {
       hour: "2-digit", minute: "2-digit"
     }));
-
     input.value    = "";
     input.disabled = true;
-
-    // Hide suggestions after first message
     document.getElementById("suggestions").style.display = "none";
-
     socket.emit("message", { message: msg });
   }
 
@@ -520,20 +612,15 @@
   }
 
   function handleKeydown(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
   function addMessage(role, text, timestamp) {
     const container = document.getElementById("chat-messages");
     const div       = document.createElement("div");
     div.className   = `message ${role}`;
-
-    const avatar = role === "bot" ? "🤖" : "👤";
-    div.innerHTML = `
-      <div class="avatar ${role}">${avatar}</div>
+    div.innerHTML   = `
+      <div class="avatar ${role}">${role === "bot" ? "🤖" : "👤"}</div>
       <div>
         <div class="bubble">${formatMessage(text)}</div>
         <div class="timestamp">${timestamp || ""}</div>
@@ -551,9 +638,7 @@
       <div class="avatar bot">🤖</div>
       <div class="bubble">
         <div class="thinking-indicator">
-          <div class="dot"></div>
-          <div class="dot"></div>
-          <div class="dot"></div>
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
         </div>
       </div>
     `;
@@ -563,11 +648,247 @@
   }
 
   function formatMessage(text) {
-    // Basic formatting — bold, newlines, preserve structure
     return text
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\n/g, "<br>")
-      .replace(/`(.*?)`/g, "<code>$1</code>");
+      .replace(/`(.*?)`/g, "<code style='background:#2d3748;padding:1px 4px;border-radius:3px'>$1</code>");
+  }
+
+  // ── Ticker search + modal ─────────────────────────────────────────────────
+  async function analyzeTicker() {
+    const input  = document.getElementById("ticker-search-input");
+    const ticker = input.value.trim().toUpperCase();
+    if (!ticker) return;
+
+    input.value = "";
+    openModal(ticker);
+  }
+
+  function openModal(ticker) {
+    const overlay = document.getElementById("analyze-modal");
+    const content = document.getElementById("modal-content");
+    const title   = document.getElementById("modal-ticker-name");
+
+    title.textContent   = `Analyzing ${ticker}...`;
+    content.innerHTML   = '<div class="loading">Fetching data...</div>';
+    overlay.classList.add("open");
+    currentModal = ticker;
+
+    fetch(`/api/analyze/${ticker}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          content.innerHTML = `<p style="color:#fc8181">${data.error}</p>`;
+          return;
+        }
+        title.textContent = `${data.ticker} — ${data.company || ticker}`;
+        renderModalContent(data, content);
+      })
+      .catch(e => {
+        content.innerHTML = `<p style="color:#fc8181">Error: ${e.message}</p>`;
+      });
+  }
+
+  function renderModalContent(data, container) {
+    const t  = data.technicals || {};
+    const q  = data.quality    || {};
+    const ms = data.model_signal || {};
+
+    const verdictClass =
+      q.verdict?.includes("EXCELLENT") ? "excellent" :
+      q.verdict?.includes("GOOD")      ? "good"      :
+      q.verdict?.includes("MARGINAL")  ? "marginal"  :
+      q.verdict?.includes("watchlist") ? "watchlist" : "not";
+
+    const scoreColor =
+      q.score >= 80 ? "#48bb78" :
+      q.score >= 60 ? "#63b3ed" :
+      q.score >= 40 ? "#ed8936" : "#fc8181";
+
+    const signalColor =
+      ms.signal === "BUY"   ? "#48bb78" :
+      ms.signal === "WATCH" ? "#63b3ed" : "#fc8181";
+
+    const issues = (q.issues || [])
+      .map(i => `<li>${i}</li>`).join("");
+
+    const inWatchlist = data.in_watchlist;
+
+    container.innerHTML = `
+      <div style="margin-bottom:12px">
+        <span style="color:#718096; font-size:12px">
+          ${data.sector || ""} ${data.industry ? "· " + data.industry : ""}
+          ${data.market_cap ? "· " + data.market_cap : ""}
+        </span>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="label">Price</div>
+          <div class="value">$${t.price || "—"}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Model Signal</div>
+          <div class="value" style="color:${signalColor}">
+            ${ms.signal || ms.error ? (ms.signal || "—") : "—"}
+          </div>
+          <div style="font-size:11px; color:#718096; margin-top:2px">
+            ${ms.prob_up ? (ms.prob_up * 100).toFixed(1) + "% prob up" : ""}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="label">RSI (14)</div>
+          <div class="value" style="color:${t.rsi_14 > 70 ? '#fc8181' : t.rsi_14 < 30 ? '#48bb78' : '#e2e8f0'}">
+            ${t.rsi_14 || "—"}
+          </div>
+          <div style="font-size:11px; color:#718096">${t.rsi_signal || ""}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Trend</div>
+          <div class="value" style="color:${data.trend === 'Uptrend' ? '#48bb78' : '#fc8181'}">
+            ${data.trend || "—"}
+          </div>
+          <div style="font-size:11px; color:#718096">
+            ${t.above_200ma !== null ? (t.above_200ma ? "Above 200MA" : "Below 200MA") : ""}
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="label">5d Return</div>
+          <div class="value" style="color:${t.return_5d >= 0 ? '#48bb78' : '#fc8181'}">
+            ${t.return_5d ? (t.return_5d * 100).toFixed(2) + "%" : "—"}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="label">20d Return</div>
+          <div class="value" style="color:${t.return_20d >= 0 ? '#48bb78' : '#fc8181'}">
+            ${t.return_20d ? (t.return_20d * 100).toFixed(2) + "%" : "—"}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="label">BB Position</div>
+          <div class="value">${t.bb_position ? (t.bb_position * 100).toFixed(0) + "%" : "—"}</div>
+          <div style="font-size:11px; color:#718096">
+            ${t.bb_position > 0.8 ? "Near upper band" : t.bb_position < 0.2 ? "Near lower band" : "Mid band"}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Volatility</div>
+          <div class="value">${q.annualized_vol ? (q.annualized_vol * 100).toFixed(0) + "%" : "—"}</div>
+          <div style="font-size:11px; color:#718096">annualized</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px">
+          <span style="font-size:13px; font-weight:600">Watchlist Quality</span>
+          <span style="color:${scoreColor}; font-weight:700">${q.score}/100</span>
+        </div>
+        <div class="quality-bar-wrap">
+          <div class="quality-bar" style="width:${q.score}%; background:${scoreColor}"></div>
+        </div>
+        <div style="margin-top:8px">
+          <span class="verdict-badge verdict-${verdictClass}">
+            ${q.verdict || "Unknown"}
+          </span>
+        </div>
+      </div>
+
+      ${issues ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:12px; color:#718096; margin-bottom:8px">Issues flagged:</div>
+          <ul class="issue-list">${issues}</ul>
+        </div>
+      ` : ""}
+
+      ${data.summary && data.summary.length > 0 ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:12px; color:#718096; margin-bottom:8px">Key observations:</div>
+          ${data.summary.map(s => `
+            <div style="padding:5px 0; font-size:13px; color:#a0aec0; border-bottom:1px solid #2d3748">
+              → ${s}
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+
+      <div class="modal-actions">
+        ${inWatchlist ? `
+          <div style="color:#63b3ed; font-size:13px; padding:8px 0">
+            ✓ Already in your watchlist
+          </div>
+        ` : q.score >= 40 ? `
+          <button class="btn btn-green" onclick="addToWatchlist('${data.ticker}')">
+            + Add to Watchlist
+          </button>
+          <button class="btn" style="background:#2d3748"
+            onclick="document.getElementById('chat-input').value='Analyze ${data.ticker} for me'; closeModal(); sendMessage()">
+            Ask AI about ${data.ticker}
+          </button>
+        ` : `
+          <div style="color:#fc8181; font-size:13px; padding:8px 0">
+            ✗ Quality too low for watchlist
+          </div>
+          <button class="btn" style="background:#2d3748"
+            onclick="document.getElementById('chat-input').value='Analyze ${data.ticker} for me'; closeModal(); sendMessage()">
+            Ask AI about ${data.ticker}
+          </button>
+        `}
+      </div>
+    `;
+  }
+
+  function closeModal() {
+    document.getElementById("analyze-modal").classList.remove("open");
+    currentModal = null;
+  }
+
+  // Close modal on overlay click
+  document.getElementById("analyze-modal").addEventListener("click", function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  async function addToWatchlist(ticker) {
+    const btn = event.target;
+    btn.disabled    = true;
+    btn.textContent = "Adding...";
+
+    try {
+      const r    = await fetch("/api/watchlist/add", {
+        method:  "POST",
+        headers: {"Content-Type": "application/json"},
+        body:    JSON.stringify({ ticker }),
+      });
+      const data = await r.json();
+
+      if (data.status === "added") {
+        btn.textContent  = "✓ Added!";
+        btn.style.background = "#276749";
+
+        // Show next steps in chat
+        const steps = (data.next_steps || []).join("\n");
+        addMessage("bot",
+          `✓ **${ticker}** added to watchlist!\n\nTo complete setup, run these commands:\n\`\`\`\n${steps}\n\`\`\``,
+          new Date().toLocaleTimeString()
+        );
+        closeModal();
+
+        // Refresh win rates panel
+        setTimeout(loadWinRates, 1000);
+        setTimeout(loadSignals,  1000);
+
+      } else {
+        btn.textContent      = data.status || "Failed";
+        btn.style.background = "#742a2a";
+        btn.disabled         = false;
+      }
+    } catch(e) {
+      btn.textContent      = "Error";
+      btn.style.background = "#742a2a";
+      btn.disabled         = false;
+    }
   }
 
   // ── Dashboard data ────────────────────────────────────────────────────────
@@ -576,31 +897,29 @@
       const r    = await fetch("/api/macro");
       const data = await r.json();
 
-      document.getElementById("vix-value").textContent = data.vix;
+      document.getElementById("vix-value").textContent      = data.vix;
       document.getElementById("treasury-value").textContent = data.treasury_10y + "%";
-      document.getElementById("dollar-value").textContent = data.dollar_index;
+      document.getElementById("dollar-value").textContent   = data.dollar_index;
 
-      const change = data.vix_change;
+      const change   = data.vix_change;
       const changeEl = document.getElementById("vix-change");
-      changeEl.textContent  = (change >= 0 ? "+" : "") + change.toFixed(2);
-      changeEl.style.color  = change >= 0 ? "#fc8181" : "#68d391";
+      changeEl.textContent = (change >= 0 ? "+" : "") + change.toFixed(2);
+      changeEl.style.color = change >= 0 ? "#fc8181" : "#68d391";
 
-      const badge = document.getElementById("fear-badge");
-      badge.textContent  = `Fear: ${data.fear_level}`;
-      badge.className    = `fear-badge fear-${data.fear_level.split(" ")[0]}`;
-    } catch(e) {
-      console.error("Macro load error:", e);
-    }
+      const badge      = document.getElementById("fear-badge");
+      badge.textContent = `Fear: ${data.fear_level}`;
+      badge.className   = `fear-badge fear-${data.fear_level.split(" ")[0]}`;
+    } catch(e) { console.error("Macro:", e); }
   }
 
   async function loadSignals() {
     try {
       const r       = await fetch("/api/signals");
       const data    = await r.json();
-      const signals = data.signals;
+      const signals = data.signals || [];
       const container = document.getElementById("signals-container");
 
-      if (!signals || signals.length === 0) {
+      if (!signals.length) {
         container.innerHTML = `
           <div class="loading">No signals yet.
             <button class="btn btn-sm" style="margin-left:8px"
@@ -609,7 +928,6 @@
         return;
       }
 
-      // Sort by action priority
       const priority = {
         "STRONG BUY": 0, "BUY": 1, "WEAK BUY": 2,
         "HOLD": 3, "AVOID": 4
@@ -625,7 +943,7 @@
         const pct       = (s.prob_up * 100).toFixed(1);
         const wr        = (s.win_rate * 100).toFixed(0);
         return `
-          <tr>
+          <tr onclick="openModal('${s.ticker}')" title="Click to analyze ${s.ticker}">
             <td><strong>${s.ticker}</strong></td>
             <td>
               <span class="action-badge action-${actionKey}">
@@ -635,7 +953,7 @@
             <td>
               <div>${pct}%</div>
               <div class="prob-bar-wrap">
-                <div class="prob-bar" style="width:${pct}%"></div>
+                <div class="prob-bar" style="width:${Math.min(pct,100)}%"></div>
               </div>
             </td>
             <td>${wr}%</td>
@@ -649,20 +967,17 @@
         <table class="signal-table">
           <thead>
             <tr>
-              <th>Ticker</th>
-              <th>Action</th>
-              <th>Confidence</th>
-              <th>Win Rate</th>
-              <th>Horizon</th>
-              <th>Price</th>
+              <th>Ticker</th><th>Action</th><th>Confidence</th>
+              <th>Win%</th><th>Horizon</th><th>Price</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
+        <div style="font-size:11px; color:#4a5568; margin-top:8px; text-align:right">
+          Click any row to analyze
+        </div>
       `;
-    } catch(e) {
-      console.error("Signals load error:", e);
-    }
+    } catch(e) { console.error("Signals:", e); }
   }
 
   async function loadWinRates() {
@@ -672,44 +987,39 @@
       const container = document.getElementById("winrates-container");
 
       const rows = Object.entries(data).map(([ticker, horizons]) => {
-        const best = Math.max(...Object.values(horizons));
-        const pct  = (best * 100).toFixed(0);
-        const color = best >= 0.7 ? "#68d391" :
+        const best  = Math.max(...Object.values(horizons));
+        const pct   = (best * 100).toFixed(0);
+        const color = best >= 0.7 ? "#48bb78" :
                       best >= 0.6 ? "#63b3ed" : "#a0aec0";
         return `
-          <div style="display:flex; justify-content:space-between;
-                      align-items:center; padding:6px 0;
-                      border-bottom:1px solid #2d3748;">
-            <span style="font-weight:600">${ticker}</span>
-            <div style="display:flex; align-items:center; gap:8px;">
+          <div class="winrate-row" onclick="openModal('${ticker}')"
+               style="cursor:pointer" title="Click to analyze ${ticker}">
+            <span class="ticker-name">${ticker}</span>
+            <div style="display:flex; align-items:center; gap:8px">
               <div class="prob-bar-wrap" style="width:80px">
                 <div class="prob-bar" style="width:${pct}%; background:${color}"></div>
               </div>
-              <span style="color:${color}; font-size:13px">${pct}%</span>
+              <span style="color:${color}; font-size:13px; width:36px">${pct}%</span>
             </div>
           </div>
         `;
       }).join("");
 
       container.innerHTML = `<div>${rows}</div>`;
-    } catch(e) {
-      console.error("Win rates load error:", e);
-    }
+    } catch(e) { console.error("Win rates:", e); }
   }
 
   async function refreshSignals() {
-    const btn = document.getElementById("refresh-btn");
+    const btn        = document.getElementById("refresh-btn");
     btn.disabled     = true;
     btn.textContent  = "Running...";
-
     try {
       await fetch("/api/refresh", { method: "POST" });
-      // Poll for completion
       setTimeout(async () => {
         await loadSignals();
         btn.disabled    = false;
         btn.textContent = "Refresh";
-      }, 30000); // wait 30s then reload
+      }, 30000);
     } catch(e) {
       btn.disabled    = false;
       btn.textContent = "Refresh";
@@ -721,11 +1031,7 @@
   loadSignals();
   loadWinRates();
 
-  // Auto-refresh dashboard every 5 minutes
-  setInterval(() => {
-    loadMacro();
-    loadSignals();
-  }, 5 * 60 * 1000);
+  setInterval(() => { loadMacro(); loadSignals(); }, 5 * 60 * 1000);
 </script>
 </body>
 </html>

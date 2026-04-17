@@ -91,6 +91,39 @@ def api_refresh():
 def api_win_rates():
     return jsonify(TICKER_WIN_RATES)
 
+@app.route("/api/watchlist")
+def api_watchlist():
+    from config import TICKERS
+    return jsonify({"tickers": TICKERS})
+
+@app.route("/api/watchlist/add", methods=["POST"])
+def api_add_to_watchlist():
+    data   = request.get_json()
+    ticker = data.get("ticker", "").upper().strip()
+    if not ticker:
+        return jsonify({"error": "No ticker provided"}), 400
+
+    from analyze import analyze_ticker, add_ticker_to_watchlist
+    quality = analyze_ticker(ticker)
+    score   = quality.get("quality", {}).get("score", 0)
+
+    if score < 40:
+        return jsonify({
+            "status":  "rejected",
+            "reason":  "Quality score too low",
+            "score":   score,
+            "verdict": quality.get("quality", {}).get("verdict"),
+        }), 400
+
+    result = add_ticker_to_watchlist(ticker)
+    return jsonify(result)
+
+@app.route("/api/analyze/<ticker>")
+def api_analyze(ticker):
+    from analyze import analyze_ticker
+    result = analyze_ticker(ticker.upper())
+    return jsonify(result)
+
 # ── WebSocket for bot chat ─────────────────────────────────────────────────────
 
 @socketio.on("connect")

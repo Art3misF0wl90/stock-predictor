@@ -13,34 +13,44 @@ from features import add_features, get_feature_columns
 from config import TICKERS
 
 MIN_WIN_RATE_THRESHOLD = 0.70
+MIN_PROB               = 0.55
+MAX_VIX                = 30
+TICKERS_NO_EARNINGS    = ["TSLA"]
 
 TICKER_WIN_RATES = {
-    "AAPL": {"1d": 0.686, "21d": 0.686, "63d": 0.789},
-    "MSFT": {"1d": 0.848, "21d": 0.957, "63d": 0.943},
-    "TSLA": {"1d": 0.552, "21d": 0.552, "63d": 0.464},
-    "JPM":  {"1d": 0.619, "21d": 0.952, "63d": 1.000},
-    "NVDA": {"1d": 0.658, "21d": 1.000, "63d": 1.000},
+    "AAPL": {"1d": 0.647, "21d": 0.533, "63d": 0.556, "126d": 0.760},
+    "MSFT": {"1d": 0.623, "21d": 0.508, "63d": 0.262, "126d": 0.610},
+    "TSLA": {"1d": 0.600, "21d": 0.700, "63d": 1.000, "126d": 1.000},
+    "JPM":  {"1d": 1.000, "21d": 0.600, "63d": 1.000, "126d": 1.000},
+    "NVDA": {"1d": 0.500, "21d": 0.500, "63d": 0.500, "126d": 0.500},
 }
 
-TICKERS_NO_EARNINGS = ["TSLA"]
+TICKER_BEST_HORIZON = {
+    "AAPL": "126d",
+    "MSFT": "126d",
+    "TSLA": "126d",
+    "JPM":  "126d",
+    "NVDA": "126d",
+}
 
 def setup_database():
     conn = sqlite3.connect("data/predictions.db")
     c    = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS signals (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            date        TEXT NOT NULL,
-            ticker      TEXT NOT NULL,
-            signal      INTEGER NOT NULL,
-            prob_up     REAL NOT NULL,
-            horizon     TEXT NOT NULL,
-            win_rate    REAL NOT NULL,
-            action      TEXT NOT NULL,
-            close_price REAL,
-            model_name  TEXT,
-            fwd_days    INTEGER,
-            created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            date          TEXT NOT NULL,
+            ticker        TEXT NOT NULL,
+            signal        INTEGER NOT NULL,
+            prob_up       REAL NOT NULL,
+            horizon       TEXT NOT NULL,
+            win_rate      REAL NOT NULL,
+            action        TEXT NOT NULL,
+            close_price   REAL,
+            model_name    TEXT,
+            fwd_days      INTEGER,
+            filter_reason TEXT,
+            created_at    TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
     c.execute("""
@@ -69,6 +79,41 @@ def fetch_latest_data(ticker: str) -> pd.DataFrame:
     df.dropna(inplace=True)
     return df
 
+def apply_entry_filters(row, prob_up: float) -> tuple:
+    """
+    Applies entry filters to a buy signal.
+    Returns (passes_filter, filter_reason).
+    """
+    # Confidence filter
+    if prob_up < MIN_PROB:
+        return False, f"low_confidence ({prob_up:.1%} < {MIN_PROB:.0%})"
+
+    # VIX crisis filter
+    if "vix" in row.index:
+        vix = row.get("vix", 0)
+        if not pd.isna(vix) and float(vix) > MAX_VIX:
+            return False, f"high_vix ({float(vix):.1f} > {MAX_VIX})"
+
+    # Trend filter — price below 50-day MA
+    if "price_to_ma50" in row.index:
+        ptma = row.get("price_to_ma50", 1.0)
+        if not pd.isna(ptma) and float(ptma) < 1.0:
+            return False, f"below_50ma ({float(ptma):.3f})"
+
+    # RSI overbought filter
+    if "rsi_14" in row.index:
+        rsi = row.get("rsi_14", 50)
+        if not pd.isna(rsi) and float(rsi) > 70:
+            return False, f"overbought_rsi ({float(rsi):.1f})"
+
+    # Earnings blackout filter
+    if "days_to_earnings" in row.index:
+        dte = row.get("days_to_earnings", 90)
+        if not pd.isna(dte) and 0 < float(dte) <= 3:
+            return False, f"earnings_in_{int(dte)}d"
+
+    return True, None
+
 def get_today_signal(ticker, macro_df, sentiment, earnings=None):
     model_path  = os.path.join("models", f"{ticker}_model.pkl")
     scaler_path = os.path.join("models", f"{ticker}_scaler.pkl")
@@ -90,8 +135,7 @@ def get_today_signal(ticker, macro_df, sentiment, earnings=None):
         return None
 
     sentiment_series = sentiment.get(ticker) if sentiment else None
-
-    earnings_df = (
+    earnings_df      = (
         None if ticker in TICKERS_NO_EARNINGS
         else build_earnings_features(ticker, df)
     )
@@ -108,7 +152,6 @@ def get_today_signal(ticker, macro_df, sentiment, earnings=None):
         return None
 
     feat_cols = [c for c in feat_cols if c in df_feat.columns]
-
     if not feat_cols:
         print(f"  Warning: no matching feature columns for {ticker}")
         return None
@@ -116,32 +159,47 @@ def get_today_signal(ticker, macro_df, sentiment, earnings=None):
     X_today  = df_feat[feat_cols].iloc[[-1]].values
     X_scaled = scaler.transform(X_today)
     prob_up  = float(model.predict_proba(X_scaled)[0][1])
-    signal   = int(prob_up >= 0.5)
+    raw_signal = int(prob_up >= 0.5)
 
     horizon_map = {1: "1d", 21: "21d", 63: "63d", 126: "126d"}
     horizon     = horizon_map.get(fwd_days, f"{fwd_days}d")
     win_rate    = float(TICKER_WIN_RATES.get(ticker, {}).get(horizon, 0.5))
 
-    if signal == 1 and win_rate >= MIN_WIN_RATE_THRESHOLD:
+    # Apply entry filters
+    latest        = df_feat.iloc[-1]
+    filter_reason = None
+    final_signal  = raw_signal
+
+    if raw_signal == 1:
+        passes, filter_reason = apply_entry_filters(latest, prob_up)
+        if not passes:
+            final_signal = 0
+
+    # Determine action
+    if final_signal == 1 and win_rate >= MIN_WIN_RATE_THRESHOLD:
         action = "STRONG BUY" if prob_up >= 0.7 else "BUY"
-    elif signal == 1:
+    elif raw_signal == 1 and final_signal == 0:
+        action = f"FILTERED ({filter_reason})"
+    elif raw_signal == 1:
         action = "WEAK BUY"
-    elif signal == 0 and win_rate >= MIN_WIN_RATE_THRESHOLD:
+    elif raw_signal == 0 and win_rate >= MIN_WIN_RATE_THRESHOLD:
         action = "AVOID"
     else:
         action = "HOLD"
 
     return {
-        "ticker":      ticker,
-        "date":        str(date.today()),
-        "signal":      signal,
-        "prob_up":     float(round(prob_up, 4)),
-        "horizon":     horizon,
-        "win_rate":    win_rate,
-        "action":      action,
-        "close_price": float(df_feat["Close"].iloc[-1]),
-        "model_name":  model_name,
-        "fwd_days":    fwd_days,
+        "ticker":        ticker,
+        "date":          str(date.today()),
+        "signal":        final_signal,
+        "raw_signal":    raw_signal,
+        "prob_up":       float(round(prob_up, 4)),
+        "horizon":       horizon,
+        "win_rate":      win_rate,
+        "action":        action,
+        "close_price":   float(df_feat["Close"].iloc[-1]),
+        "model_name":    model_name,
+        "fwd_days":      fwd_days,
+        "filter_reason": filter_reason,
     }
 
 def save_signals(signals):
@@ -155,45 +213,48 @@ def save_signals(signals):
         c.execute("""
             INSERT INTO signals
             (date, ticker, signal, prob_up, horizon,
-             win_rate, action, close_price, model_name, fwd_days)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             win_rate, action, close_price, model_name,
+             fwd_days, filter_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             s["date"], s["ticker"], s["signal"], s["prob_up"],
             s["horizon"], s["win_rate"], s["action"],
-            s["close_price"], s["model_name"], s["fwd_days"]
+            s["close_price"], s["model_name"], s["fwd_days"],
+            s.get("filter_reason"),
         ))
     conn.commit()
     conn.close()
 
 def print_signal_report(signals):
-    today    = datetime.now().strftime("%Y-%m-%d")
-    valid    = [s for s in signals if s is not None]
+    today = datetime.now().strftime("%Y-%m-%d")
+    valid = [s for s in signals if s is not None]
 
-    print(f"\n{'═'*65}")
+    print(f"\n{'═'*70}")
     print(f"  DAILY SIGNALS — {today}")
     print(f"  Models evaluated: {len(valid)}/{len(signals)}")
-    print(f"{'═'*65}")
-    print(f"  {'Ticker':<8} {'Action':<12} {'Confidence':>11} "
-          f"{'Win rate':>10} {'Horizon':>8} {'Price':>8} {'Model':>8}")
-    print(f"  {'─'*62}")
+    print(f"{'═'*70}")
+    print(f"  {'Ticker':<8} {'Action':<22} {'Confidence':>11} "
+          f"{'Win rate':>10} {'Horizon':>8} {'Price':>8}")
+    print(f"  {'─'*68}")
 
     priority = {"STRONG BUY": 0, "BUY": 1, "WEAK BUY": 2,
                 "HOLD": 3, "AVOID": 4}
 
     signals_sorted = sorted(
         valid,
-        key=lambda x: (priority.get(x["action"], 5), -x["prob_up"])
+        key=lambda x: (priority.get(x["action"].split("(")[0].strip(), 3),
+                       -x["prob_up"])
     )
 
     for s in signals_sorted:
-        print(f"  {s['ticker']:<8} {s['action']:<12} "
+        print(f"  {s['ticker']:<8} {s['action']:<22} "
               f"{s['prob_up']:>11.1%} "
               f"{s['win_rate']:>10.1%} "
               f"{s['horizon']:>8} "
-              f"${s['close_price']:>7.2f} "
-              f"{s['model_name']:>8}")
+              f"${s['close_price']:>7.2f}")
 
-    print(f"\n  Actionable (win rate >= {MIN_WIN_RATE_THRESHOLD:.0%}):")
+    print(f"\n  Actionable (win rate >= {MIN_WIN_RATE_THRESHOLD:.0%}, "
+          f"confidence >= {MIN_PROB:.0%}):")
     actionable = [s for s in signals_sorted
                   if s["action"] in ("STRONG BUY", "BUY")]
 
@@ -201,18 +262,19 @@ def print_signal_report(signals):
         for s in actionable:
             print(f"  → {s['ticker']}: {s['action']} "
                   f"| hold {s['horizon']} "
-                  f"| {s['win_rate']:.0%} historical win rate "
+                  f"| {s['win_rate']:.0%} win rate "
                   f"| ${s['close_price']:.2f} "
                   f"| confidence {s['prob_up']:.1%}")
     else:
         print("  → No high-confidence buy signals today")
         print(f"\n  All signals:")
         for s in signals_sorted:
+            fr = f" — filtered: {s['filter_reason']}" \
+                 if s.get("filter_reason") else ""
             print(f"     {s['ticker']}: {s['action']} "
-                  f"(prob_up={s['prob_up']:.1%}, "
-                  f"signal={s['signal']})")
+                  f"(prob={s['prob_up']:.1%}){fr}")
 
-    print(f"{'═'*65}\n")
+    print(f"{'═'*70}\n")
 
 def run_predictions():
     print("Loading data for prediction...")

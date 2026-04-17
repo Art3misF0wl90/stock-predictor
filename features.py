@@ -117,8 +117,6 @@ def add_features(df: pd.DataFrame,
         if df.index.tzinfo is not None:
             df.index = df.index.tz_localize(None)
         df = df.join(macro_aligned, how="left")
-        # ffill fills gaps AND forward-fills past the end of macro data
-        # This handles the case where price data is newer than macro data
         df[macro_cols] = df[macro_cols].ffill().bfill()
 
     if sentiment_series is not None:
@@ -138,6 +136,13 @@ def add_features(df: pd.DataFrame,
         for col in earn_cols:
             if col in earnings_df.columns:
                 df[col] = earnings_df[col].values
+
+    if not predict_mode:
+        df["target"] = (df["Close"].shift(-fwd) > df["Close"]).astype(int)
+        df.dropna(inplace=True)
+    else:
+        feature_cols = [c for c in df.columns if c != "target"]
+        df = df.dropna(subset=feature_cols)
 
     return df
 
@@ -182,13 +187,4 @@ def get_feature_columns(include_macro=True,
             "pead_signal",
         ]
 
-    if not predict_mode:
-        df["target"] = (df["Close"].shift(-fwd) > df["Close"]).astype(int)
-        df.dropna(inplace=True)
-    else:
-        # In predict mode just drop rows with NaN features
-        # but keep the last row even if target would be NaN
-        feature_cols = [c for c in df.columns if c != "target"]
-        df = df.dropna(subset=feature_cols)
-
-    return df
+    return base

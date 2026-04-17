@@ -2,8 +2,10 @@ import os
 
 TICKERS = ["AAPL", "MSFT", "TSLA", "JPM", "NVDA"]
 
+from datetime import date
+
 START_DATE = "2015-01-01"
-END_DATE   = "2024-12-31"
+END_DATE   = str(date.today())   # always uses today's date
 
 FORWARD_DAYS      = 21
 FORWARD_DAYS_LIST = [1, 21, 63]

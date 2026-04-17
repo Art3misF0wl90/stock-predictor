@@ -1,6 +1,9 @@
 import os
 
-TICKERS = ["AAPL", "MSFT", "TSLA", "JPM", "NVDA"]
+TICKERS = [
+    "AAPL", "MSFT", "TSLA", "JPM", "NVDA",  # original
+    "GOOGL", "AMZN", "META", "SPY", "AMD",   # new
+]
 
 from datetime import date
 

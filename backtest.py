@@ -12,50 +12,63 @@ from earnings_loader import load_all_earnings
 from features import add_features, get_feature_columns
 from config import TICKERS, TRAIN_RATIO, VAL_RATIO, HOLDING_PERIODS
 
+TICKERS_NO_EARNINGS = ["TSLA", "SPY"]
+
+MIN_PROB = 0.55
+MAX_VIX  = 30
+
+TICKER_MIN_PROB = {
+    "AAPL":  0.55,
+    "MSFT":  0.55,
+    "TSLA":  0.55,
+    "JPM":   0.55,
+    "NVDA":  0.50,
+    "GOOGL": 0.50,
+    "AMZN":  0.52,
+    "META":  0.52,
+    "SPY":   0.55,
+    "AMD":   0.55,
+}
+
 def get_signal_returns(ticker, df, macro_df=None,
                        sentiment=None, earnings=None,
-                       min_prob=0.55,
-                       max_vix=30,
+                       max_vix=MAX_VIX,
                        use_trend_filter=True,
                        use_rsi_filter=True,
                        use_earnings_filter=True):
-    """
-    Runs the saved model on the test set and computes forward
-    returns at each holding period for every signal.
-
-    Filters applied before accepting a buy signal:
-    - min_prob: minimum model confidence required
-    - max_vix: skip buys when VIX is above this (crisis mode)
-    - use_trend_filter: skip buys when price below 50-day MA
-    - use_rsi_filter: skip buys when RSI > 70 (overbought)
-    - use_earnings_filter: skip buys within 3 days of earnings
-    """
     scaler_path = os.path.join("models", f"{ticker}_scaler.pkl")
     model_path  = os.path.join("models", f"{ticker}_model.pkl")
+    config_path = os.path.join("models", f"{ticker}_config.pkl")
 
     if not os.path.exists(model_path):
         print(f"  No model for {ticker}")
         return None
 
+    scaler    = joblib.load(scaler_path)
+    model     = joblib.load(model_path)
+    cfg       = joblib.load(config_path)
+    feat_cols = cfg["feat_cols"]
+    fwd_days  = cfg["fwd_days"]
+
     sentiment_series = sentiment.get(ticker) if sentiment else None
-    earnings_df      = earnings.get(ticker)  if earnings  else None
+
+    # Use earnings only if the saved model was trained with them
+    has_earnings = any(
+        "eps" in c or "pead" in c or "earnings" in c
+        for c in feat_cols
+    )
+    earnings_df = (
+        earnings.get(ticker) if (earnings and has_earnings) else None
+    )
 
     df_feat = add_features(df.copy(), macro_df=macro_df,
                            sentiment_series=sentiment_series,
-                           earnings_df=earnings_df)
-    TICKERS_NO_EARNINGS = ["TSLA"]
-    feat_cols = get_feature_columns(
-        include_macro=macro_df is not None,
-        include_sentiment=sentiment_series is not None,
-        include_earnings=(earnings_df is not None and
-                          ticker not in TICKERS_NO_EARNINGS),
-    )
-    feat_cols = [c for c in feat_cols if c in df_feat.columns]
+                           earnings_df=earnings_df,
+                           forward_days=fwd_days)
 
-    scaler   = joblib.load(scaler_path)
-    model    = joblib.load(model_path)
-    X_scaled = scaler.transform(df_feat[feat_cols].values)
-    probs    = model.predict_proba(X_scaled)[:, 1]
+    feat_cols = [c for c in feat_cols if c in df_feat.columns]
+    X_scaled  = scaler.transform(df_feat[feat_cols].values)
+    probs     = model.predict_proba(X_scaled)[:, 1]
 
     df_feat["prob_up"] = probs
     df_feat["signal"]  = (probs >= 0.5).astype(int)
@@ -65,6 +78,7 @@ def get_signal_returns(ticker, df, macro_df=None,
     test_df   = df_feat.iloc[val_end:].copy()
     close_all = df_feat["Close"]
 
+    ticker_min_prob    = TICKER_MIN_PROB.get(ticker, MIN_PROB)
     records            = []
     consecutive_losses = 0
 
@@ -76,31 +90,37 @@ def get_signal_returns(ticker, df, macro_df=None,
         filter_reason = None
 
         if raw_signal == 1:
-            if prob_up < min_prob:
+            # Confidence filter — per ticker
+            if prob_up < ticker_min_prob:
                 filtered      = True
-                filter_reason = f"low_confidence ({prob_up:.2f} < {min_prob})"
+                filter_reason = f"low_confidence ({prob_up:.2f} < {ticker_min_prob})"
 
+            # VIX crisis filter
             elif "vix" in row.index and not pd.isna(row.get("vix", np.nan)):
                 if float(row["vix"]) > max_vix:
                     filtered      = True
                     filter_reason = f"high_vix ({row['vix']:.1f} > {max_vix})"
 
+            # Trend filter — price below 50-day MA
             elif use_trend_filter and "price_to_ma50" in row.index:
                 if float(row.get("price_to_ma50", 1.0)) < 1.0:
                     filtered      = True
                     filter_reason = "below_50ma (downtrend)"
 
+            # RSI overbought filter
             elif use_rsi_filter and "rsi_14" in row.index:
                 if float(row.get("rsi_14", 50)) > 70:
                     filtered      = True
                     filter_reason = f"overbought_rsi ({row['rsi_14']:.1f})"
 
+            # Earnings blackout filter
             elif use_earnings_filter and "days_to_earnings" in row.index:
                 dte = float(row.get("days_to_earnings", 90))
                 if 0 < dte <= 3:
                     filtered      = True
                     filter_reason = f"earnings_blackout ({dte:.0f}d)"
 
+            # Consecutive losses pause
             elif consecutive_losses >= 3:
                 filtered      = True
                 filter_reason = f"consecutive_losses ({consecutive_losses})"
@@ -134,8 +154,8 @@ def get_signal_returns(ticker, df, macro_df=None,
 
         records.append(record)
 
-    result_df  = pd.DataFrame(records)
-    total_raw  = int(result_df["raw_signal"].sum())
+    result_df   = pd.DataFrame(records)
+    total_raw   = int(result_df["raw_signal"].sum())
     total_final = int(result_df["signal"].sum())
     filtered_df = result_df[result_df["filtered"] == True]
 
@@ -155,9 +175,9 @@ def simulate_trades(signals_df, holding_days=21):
     if col not in signals_df.columns:
         return None
 
-    signals  = signals_df.copy().reset_index(drop=True)
-    cash     = 1.0
-    equity   = []
+    signals        = signals_df.copy().reset_index(drop=True)
+    cash           = 1.0
+    equity         = []
     in_trade_until = -1
 
     for i, row in signals.iterrows():
@@ -205,8 +225,8 @@ def full_backtest_report(ticker, signals_df):
     print(f"  Buy signals: {len(buy)} ({len(buy)/total:.1%})")
 
     if "filtered" in signals_df.columns:
-        raw_buys  = int(signals_df["raw_signal"].sum())
-        filtered  = raw_buys - len(buy)
+        raw_buys = int(signals_df["raw_signal"].sum())
+        filtered = raw_buys - len(buy)
         if raw_buys > 0:
             print(f"  Raw signals: {raw_buys} | "
                   f"Filtered: {filtered} "
@@ -301,7 +321,7 @@ def plot_backtest(ticker, signals_df):
                       line_width=0.5, opacity=0.5, row=1, col=1)
 
     col_63 = "return_63d"
-    if col_63 in buy.columns:
+    if col_63 in buy.columns and not buy.empty:
         qtr    = buy.groupby("quarter")[col_63].mean().dropna()
         colors = ["#1D9E75" if v >= 0 else "#E24B4A" for v in qtr.values]
         fig.add_trace(go.Bar(
@@ -316,9 +336,11 @@ def plot_backtest(ticker, signals_df):
     colors_dist = ["#378ADD", "#1D9E75", "#EF9F27", "#E24B4A"]
     for days, color in zip(HOLDING_PERIODS, colors_dist):
         col = f"return_{days}d"
-        if col not in buy.columns:
+        if col not in buy.columns or buy.empty:
             continue
         rets  = buy[col].dropna() * 100
+        if rets.empty:
+            continue
         label = (f"{days}d"      if days < 21  else
                  f"{days//21}mo" if days < 63  else
                  f"{days//63}q"  if days < 126 else "6mo")
@@ -331,26 +353,30 @@ def plot_backtest(ticker, signals_df):
     win_rates, labels = [], []
     for days in HOLDING_PERIODS:
         col = f"return_{days}d"
-        if col not in buy.columns:
+        if col not in buy.columns or buy.empty:
             continue
-        wr    = (buy[col].dropna() > 0).mean() * 100
+        ret = buy[col].dropna()
+        if ret.empty:
+            continue
+        wr    = (ret > 0).mean() * 100
         label = (f"{days}d"      if days < 21  else
                  f"{days//21}mo" if days < 63  else
                  f"{days//63}q"  if days < 126 else "6mo")
         win_rates.append(wr)
         labels.append(label)
 
-    fig.add_trace(go.Bar(
-        x=labels, y=win_rates,
-        marker_color=["#1D9E75" if w >= 50 else "#E24B4A"
-                      for w in win_rates],
-        text=[f"{w:.1f}%" for w in win_rates],
-        textposition="outside",
-        showlegend=False,
-    ), row=2, col=2)
-    fig.add_hline(y=50, line_dash="dash",
-                  line_color="#888780", line_width=1,
-                  opacity=0.5, row=2, col=2)
+    if win_rates:
+        fig.add_trace(go.Bar(
+            x=labels, y=win_rates,
+            marker_color=["#1D9E75" if w >= 50 else "#E24B4A"
+                          for w in win_rates],
+            text=[f"{w:.1f}%" for w in win_rates],
+            textposition="outside",
+            showlegend=False,
+        ), row=2, col=2)
+        fig.add_hline(y=50, line_dash="dash",
+                      line_color="#888780", line_width=1,
+                      opacity=0.5, row=2, col=2)
 
     fig.update_layout(
         height=800,
@@ -402,7 +428,7 @@ def run_full_backtest():
     for ticker, sdf in all_signals.items():
         buy   = sdf[sdf["signal"] == 1]
         col   = "return_63d"
-        if col not in buy.columns:
+        if col not in buy.columns or buy.empty:
             continue
         buy_r = buy[col].dropna()
         bh_r  = sdf[col].dropna()

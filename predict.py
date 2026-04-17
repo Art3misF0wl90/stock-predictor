@@ -13,16 +13,34 @@ from features import add_features, get_feature_columns
 from config import TICKERS
 
 MIN_WIN_RATE_THRESHOLD = 0.70
+# Per-ticker minimum confidence — some tickers need lower threshold
+TICKER_MIN_PROB = {
+    "AAPL":  0.55,
+    "MSFT":  0.55,
+    "TSLA":  0.55,
+    "JPM":   0.55,
+    "NVDA":  0.50,  # lower — model is very conservative on NVDA
+    "GOOGL": 0.50,  # lower — model is very conservative on GOOGL
+    "AMZN":  0.52,
+    "META":  0.52,
+    "SPY":   0.55,
+    "AMD":   0.55,
+}
 MIN_PROB               = 0.55
 MAX_VIX                = 30
-TICKERS_NO_EARNINGS    = ["TSLA"]
+TICKERS_NO_EARNINGS    = ["TSLA", "SPY"]
 
 TICKER_WIN_RATES = {
-    "AAPL": {"1d": 0.647, "21d": 0.533, "63d": 0.556, "126d": 0.760},
-    "MSFT": {"1d": 0.623, "21d": 0.508, "63d": 0.262, "126d": 0.610},
-    "TSLA": {"1d": 0.600, "21d": 0.700, "63d": 1.000, "126d": 1.000},
-    "JPM":  {"1d": 1.000, "21d": 0.600, "63d": 1.000, "126d": 1.000},
-    "NVDA": {"1d": 0.500, "21d": 0.500, "63d": 0.500, "126d": 0.500},
+    "AAPL":  {"1d": 0.639, "21d": 0.531, "63d": 0.500, "126d": 0.731},
+    "MSFT":  {"1d": 0.624, "21d": 0.550, "63d": 0.529, "126d": 0.389},
+    "TSLA":  {"1d": 0.364, "21d": 0.636, "63d": 1.000, "126d": 1.000},
+    "JPM":   {"1d": 0.743, "21d": 0.721, "63d": 0.814, "126d": 1.000},
+    "NVDA":  {"1d": 0.500, "21d": 0.500, "63d": 0.500, "126d": 0.500},
+    "GOOGL": {"1d": 0.500, "21d": 0.500, "63d": 0.500, "126d": 0.500},
+    "AMZN":  {"1d": 1.000, "21d": 1.000, "63d": 1.000, "126d": 1.000},
+    "META":  {"1d": 1.000, "21d": 1.000, "63d": 1.000, "126d": 0.000},
+    "SPY":   {"1d": 0.750, "21d": 0.500, "63d": 0.500, "126d": 0.500},
+    "AMD":   {"1d": 0.633, "21d": 0.400, "63d": 0.900, "126d": 0.967},
 }
 
 TICKER_BEST_HORIZON = {
@@ -79,14 +97,15 @@ def fetch_latest_data(ticker: str) -> pd.DataFrame:
     df.dropna(inplace=True)
     return df
 
-def apply_entry_filters(row, prob_up: float) -> tuple:
+def apply_entry_filters(row, prob_up: float, ticker: str = "") -> tuple:
     """
     Applies entry filters to a buy signal.
     Returns (passes_filter, filter_reason).
     """
-    # Confidence filter
-    if prob_up < MIN_PROB:
-        return False, f"low_confidence ({prob_up:.1%} < {MIN_PROB:.0%})"
+# Per-ticker confidence filter
+    ticker_min = TICKER_MIN_PROB.get(ticker, MIN_PROB)
+    if prob_up < ticker_min:
+        return False, f"low_confidence ({prob_up:.1%} < {ticker_min:.0%})"
 
     # VIX crisis filter
     if "vix" in row.index:
@@ -135,8 +154,14 @@ def get_today_signal(ticker, macro_df, sentiment, earnings=None):
         return None
 
     sentiment_series = sentiment.get(ticker) if sentiment else None
-    earnings_df      = (
-        None if ticker in TICKERS_NO_EARNINGS
+
+    # Use earnings only if the saved model was trained with them
+    has_earnings = any(
+        "eps" in c or "pead" in c or "earnings" in c
+        for c in feat_cols
+    )
+    earnings_df = (
+        None if not has_earnings
         else build_earnings_features(ticker, df)
     )
 
@@ -171,7 +196,7 @@ def get_today_signal(ticker, macro_df, sentiment, earnings=None):
     final_signal  = raw_signal
 
     if raw_signal == 1:
-        passes, filter_reason = apply_entry_filters(latest, prob_up)
+        passes, filter_reason = apply_entry_filters(latest, prob_up, ticker)
         if not passes:
             final_signal = 0
 

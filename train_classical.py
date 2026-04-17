@@ -14,7 +14,7 @@ from earnings_loader import load_all_earnings
 from features import add_features, get_feature_columns
 from splitter import time_split
 
-TICKERS_NO_EARNINGS = ["TSLA"]
+TICKERS_NO_EARNINGS = ["TSLA, SPY"]
 
 def train_combined(all_data, macro_df=None, sentiment=None, earnings=None):
     print(f"\n{'═'*40}")

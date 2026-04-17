@@ -64,8 +64,8 @@ def train_ticker(ticker, df, macro_df=None, sentiment=None, earnings=None):
         "test_auc": roc_auc_score(y_test, xgb.predict_proba(X_test)[:,1]),
     }
 
-    joblib.dump(scaler, os.path.join("models", f"{ticker}_scaler.pkl"))
-    joblib.dump(xgb,    os.path.join("models", f"{ticker}_xgb.pkl"))
+    joblib.dump(scaler, os.path.join("models", f"{ticker}_scaler_63d.pkl"))
+    joblib.dump(xgb,    os.path.join("models", f"{ticker}_xgb_63d.pkl"))
 
     print()
     for name, scores in results.items():

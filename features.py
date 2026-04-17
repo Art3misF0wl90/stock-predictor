@@ -5,8 +5,11 @@ from config import FORWARD_DAYS
 def add_features(df: pd.DataFrame,
                  macro_df: pd.DataFrame = None,
                  sentiment_series: pd.Series = None,
-                 earnings_df: pd.DataFrame = None) -> pd.DataFrame:
-    df = df.copy()
+                 earnings_df: pd.DataFrame = None,
+                 forward_days: int = None,
+                 predict_mode: bool = False) -> pd.DataFrame:
+    df  = df.copy()
+    fwd = forward_days if forward_days is not None else FORWARD_DAYS
 
     df["return_1d"]  = df["Close"].pct_change(1)
     df["return_5d"]  = df["Close"].pct_change(5)
@@ -114,7 +117,9 @@ def add_features(df: pd.DataFrame,
         if df.index.tzinfo is not None:
             df.index = df.index.tz_localize(None)
         df = df.join(macro_aligned, how="left")
-        df[macro_cols] = df[macro_cols].ffill()
+        # ffill fills gaps AND forward-fills past the end of macro data
+        # This handles the case where price data is newer than macro data
+        df[macro_cols] = df[macro_cols].ffill().bfill()
 
     if sentiment_series is not None:
         s = sentiment_series.copy()
@@ -134,11 +139,6 @@ def add_features(df: pd.DataFrame,
             if col in earnings_df.columns:
                 df[col] = earnings_df[col].values
 
-    df["target"] = (
-        df["Close"].shift(-FORWARD_DAYS) > df["Close"]
-    ).astype(int)
-
-    df.dropna(inplace=True)
     return df
 
 def get_feature_columns(include_macro=True,
@@ -182,4 +182,13 @@ def get_feature_columns(include_macro=True,
             "pead_signal",
         ]
 
-    return base
+    if not predict_mode:
+        df["target"] = (df["Close"].shift(-fwd) > df["Close"]).astype(int)
+        df.dropna(inplace=True)
+    else:
+        # In predict mode just drop rows with NaN features
+        # but keep the last row even if target would be NaN
+        feature_cols = [c for c in df.columns if c != "target"]
+        df = df.dropna(subset=feature_cols)
+
+    return df

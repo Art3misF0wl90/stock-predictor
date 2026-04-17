@@ -9,12 +9,24 @@ def fetch_macro() -> pd.DataFrame:
     if os.path.exists(cache_path):
         print("  Loading macro indicators from cache...")
         df = pd.read_csv(cache_path, index_col="Date", parse_dates=True)
-        return df
+        # Check if cache is stale — if last date is more than 7 days ago, refresh
+        last_date = df.index[-1].date()
+        from datetime import date, timedelta
+        if (date.today() - last_date).days > 7:
+            print("  Macro cache is stale — refreshing...")
+            os.remove(cache_path)
+        else:
+            return df
 
     print("  Fetching macro indicators...")
     frames = {}
     for name, symbol in MACRO_TICKERS.items():
-        raw = yf.download(symbol, start=START_DATE, end=END_DATE, progress=False)
+        raw = yf.download(
+            symbol,
+            start=START_DATE,
+            end=None,        # fetch up to today, not END_DATE
+            progress=False
+        )
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
         frames[name] = raw["Close"].rename(name)

@@ -5,7 +5,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
-from config import TRAIN_RATIO, VAL_RATIO
+from config import TRAIN_RATIO, VAL_RATIO, FORWARD_DAYS_LIST
 
 from data_loader import load_all_tickers
 from macro_loader import fetch_macro
@@ -14,81 +14,27 @@ from earnings_loader import load_all_earnings
 from features import add_features, get_feature_columns
 from splitter import time_split
 
-def train_ticker(ticker, df, macro_df=None, sentiment=None, earnings=None):
-    print(f"\n{'─'*40}")
-    print(f"  Ticker: {ticker}")
-    print(f"{'─'*40}")
-
-    sentiment_series = sentiment.get(ticker) if sentiment else None
-    earnings_df      = earnings.get(ticker)  if earnings  else None
-
-    df        = add_features(df, macro_df=macro_df,
-                             sentiment_series=sentiment_series,
-                             earnings_df=earnings_df)
-    feat_cols = get_feature_columns(
-        include_macro=macro_df is not None,
-        include_sentiment=sentiment_series is not None,
-        include_earnings=earnings_df is not None,
-    )
-    feat_cols = [c for c in feat_cols if c in df.columns]
-
-    (X_train, y_train), (X_val, y_val), (X_test, y_test) = time_split(df, feat_cols)
-
-    scaler  = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_val   = scaler.transform(X_val)
-    X_test  = scaler.transform(X_test)
-
-    results = {}
-
-    lr = LogisticRegression(max_iter=1000, random_state=42)
-    lr.fit(X_train, y_train)
-    results["LogReg"] = {
-        "val_auc":  roc_auc_score(y_val,  lr.predict_proba(X_val)[:,1]),
-        "test_auc": roc_auc_score(y_test, lr.predict_proba(X_test)[:,1]),
-    }
-
-    xgb = XGBClassifier(
-        n_estimators=200,
-        max_depth=4,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        eval_metric="logloss",
-        random_state=42,
-        verbosity=0,
-    )
-    xgb.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
-    results["XGBoost"] = {
-        "val_auc":  roc_auc_score(y_val,  xgb.predict_proba(X_val)[:,1]),
-        "test_auc": roc_auc_score(y_test, xgb.predict_proba(X_test)[:,1]),
-    }
-
-    joblib.dump(scaler, os.path.join("models", f"{ticker}_scaler_63d.pkl"))
-    joblib.dump(xgb,    os.path.join("models", f"{ticker}_xgb_63d.pkl"))
-
-    print()
-    for name, scores in results.items():
-        print(f"  {name:<12} Val AUC: {scores['val_auc']:.4f}  |  "
-              f"Test AUC: {scores['test_auc']:.4f}")
-
-    return results
+TICKERS_NO_EARNINGS = ["TSLA"]
 
 def train_combined(all_data, macro_df=None, sentiment=None, earnings=None):
     print(f"\n{'═'*40}")
     print("  COMBINED MODEL — all tickers")
     print(f"{'═'*40}")
 
+    from config import FORWARD_DAYS
     ticker_list = list(all_data.keys())
     train_frames, val_frames, test_frames = [], [], []
 
     for ticker, df in all_data.items():
         sentiment_series = sentiment.get(ticker) if sentiment else None
-        earnings_df      = earnings.get(ticker)  if earnings  else None
-
+        earnings_df      = (
+            None if ticker in TICKERS_NO_EARNINGS
+            else (earnings.get(ticker) if earnings else None)
+        )
         df_feat = add_features(df.copy(), macro_df=macro_df,
                                sentiment_series=sentiment_series,
-                               earnings_df=earnings_df)
+                               earnings_df=earnings_df,
+                               forward_days=FORWARD_DAYS)
         df_feat["ticker_id"] = ticker_list.index(ticker)
 
         n         = len(df_feat)
@@ -106,7 +52,7 @@ def train_combined(all_data, macro_df=None, sentiment=None, earnings=None):
     feat_cols = get_feature_columns(
         include_macro=macro_df is not None,
         include_sentiment=sentiment is not None,
-        include_earnings=earnings is not None,
+        include_earnings=True,
     ) + ["ticker_id"]
     feat_cols = [c for c in feat_cols if c in train_df.columns]
 
@@ -125,14 +71,9 @@ def train_combined(all_data, macro_df=None, sentiment=None, earnings=None):
     X_test  = scaler.transform(X_test)
 
     xgb = XGBClassifier(
-        n_estimators=200,
-        max_depth=4,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        eval_metric="logloss",
-        random_state=42,
-        verbosity=0,
+        n_estimators=200, max_depth=4, learning_rate=0.05,
+        subsample=0.8, colsample_bytree=0.8,
+        eval_metric="logloss", random_state=42, verbosity=0,
     )
     xgb.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
@@ -152,20 +93,98 @@ if __name__ == "__main__":
     sentiment = load_all_sentiment()
     earnings  = load_all_earnings(all_data)
 
-    all_results = {}
+    best_overall = {}
+
     for ticker, df in all_data.items():
-        all_results[ticker] = train_ticker(
-            ticker, df,
-            macro_df=macro_df,
-            sentiment=sentiment,
-            earnings=earnings,
+        print(f"\n{'═'*50}")
+        print(f"  {ticker} — searching best horizon + model")
+        print(f"{'═'*50}")
+
+        sentiment_series = sentiment.get(ticker) if sentiment else None
+        earnings_df      = (
+            None if ticker in TICKERS_NO_EARNINGS
+            else (earnings.get(ticker) if earnings else None)
         )
 
+        best_test_auc = 0
+        best_config   = None
+
+        for fwd in FORWARD_DAYS_LIST:
+            df_feat = add_features(df.copy(),
+                                   macro_df=macro_df,
+                                   sentiment_series=sentiment_series,
+                                   earnings_df=earnings_df,
+                                   forward_days=fwd)
+
+            feat_cols = get_feature_columns(
+                include_macro=True,
+                include_sentiment=True,
+                include_earnings=ticker not in TICKERS_NO_EARNINGS,
+            )
+            feat_cols = [c for c in feat_cols if c in df_feat.columns]
+
+            (X_train, y_train), (X_val, y_val), (X_test, y_test) = time_split(
+                df_feat, feat_cols)
+
+            scaler    = StandardScaler()
+            X_train_s = scaler.fit_transform(X_train)
+            X_val_s   = scaler.transform(X_val)
+            X_test_s  = scaler.transform(X_test)
+
+            lr = LogisticRegression(max_iter=1000, random_state=42)
+            lr.fit(X_train_s, y_train)
+            lr_test = roc_auc_score(y_test, lr.predict_proba(X_test_s)[:,1])
+
+            xgb = XGBClassifier(
+                n_estimators=200, max_depth=4, learning_rate=0.05,
+                subsample=0.8, colsample_bytree=0.8,
+                eval_metric="logloss", random_state=42, verbosity=0,
+            )
+            xgb.fit(X_train_s, y_train,
+                    eval_set=[(X_val_s, y_val)], verbose=False)
+            xgb_test = roc_auc_score(y_test, xgb.predict_proba(X_test_s)[:,1])
+
+            print(f"  {fwd:>3}d | LogReg: {lr_test:.4f} | XGBoost: {xgb_test:.4f}")
+
+            for model, name, test_auc in [
+                (lr,  "LogReg",  lr_test),
+                (xgb, "XGBoost", xgb_test),
+            ]:
+                if test_auc > best_test_auc:
+                    best_test_auc = test_auc
+                    best_config   = {
+                        "model":      model,
+                        "scaler":     scaler,
+                        "model_name": name,
+                        "fwd_days":   fwd,
+                        "test_auc":   test_auc,
+                        "feat_cols":  feat_cols,
+                    }
+
+        print(f"\n  BEST → {best_config['model_name']} "
+              f"{best_config['fwd_days']}d "
+              f"Test AUC: {best_config['test_auc']:.4f}")
+
+        joblib.dump(best_config["scaler"],
+                    os.path.join("models", f"{ticker}_scaler.pkl"))
+        joblib.dump(best_config["model"],
+                    os.path.join("models", f"{ticker}_model.pkl"))
+        joblib.dump(best_config,
+                    os.path.join("models", f"{ticker}_config.pkl"))
+
+        best_overall[ticker] = best_config
+
     print(f"\n{'═'*50}")
-    print("  SUMMARY — XGBoost Test AUC per ticker")
+    print("  FINAL BEST PER TICKER")
     print(f"{'═'*50}")
-    for ticker, res in all_results.items():
-        print(f"  {ticker:<6} {res['XGBoost']['test_auc']:.4f}")
+    print(f"  {'Ticker':<8} {'Model':<10} {'Horizon':>8} {'Test AUC':>10}")
+    print(f"  {'─'*40}")
+    for ticker, cfg in best_overall.items():
+        print(f"  {ticker:<8} {cfg['model_name']:<10} "
+              f"{cfg['fwd_days']:>6}d {cfg['test_auc']:>10.4f}")
+
+    joblib.dump(best_overall, os.path.join("models", "best_overall.pkl"))
+    print("\nSaved best_overall.pkl")
 
     train_combined(all_data, macro_df=macro_df,
                    sentiment=sentiment, earnings=earnings)

@@ -2,7 +2,8 @@ import os
 
 TICKERS = [
     "AAPL", "MSFT", "TSLA", "JPM", "NVDA",  # original
-    "GOOGL", "AMZN", "META", "SPY", "AMD",   # new
+    "GOOGL", "AMZN", "META", "SPY", "AMD",
+    "GME",   # new
 ]
 
 from datetime import date

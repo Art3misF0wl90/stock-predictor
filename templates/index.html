@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Predictor</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1a1d2e;
+      border-bottom: 1px solid #2d3748;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #63b3ed;
+      letter-spacing: 0.5px;
+    }
+
+    .header-date {
+      font-size: 13px;
+      color: #718096;
+    }
+
+    /* ── Layout ── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Left panel — dashboard ── */
+    .dashboard {
+      width: 420px;
+      min-width: 420px;
+      background: #1a1d2e;
+      border-right: 1px solid #2d3748;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #718096;
+      margin-bottom: 12px;
+    }
+
+    /* ── Macro cards ── */
+    .macro-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .macro-card {
+      background: #242736;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .macro-card .label {
+      font-size: 11px;
+      color: #718096;
+      margin-bottom: 4px;
+    }
+
+    .macro-card .value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+
+    .macro-card .change {
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .fear-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    .fear-Low     { background: #1a4731; color: #48bb78; }
+    .fear-Normal  { background: #1a3a4a; color: #63b3ed; }
+    .fear-Elevated{ background: #4a3a1a; color: #ed8936; }
+    .fear-High    { background: #4a1a1a; color: #fc8181; }
+
+    /* ── Signal table ── */
+    .signal-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .signal-table th {
+      text-align: left;
+      padding: 6px 8px;
+      color: #718096;
+      font-size: 11px;
+      font-weight: 600;
+      border-bottom: 1px solid #2d3748;
+    }
+
+    .signal-table td {
+      padding: 10px 8px;
+      border-bottom: 1px solid #1a1d2e;
+    }
+
+    .signal-table tr:hover td {
+      background: #242736;
+    }
+
+    .action-badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .action-STRONG-BUY { background: #1a4731; color: #48bb78; }
+    .action-BUY        { background: #1a3a2a; color: #68d391; }
+    .action-WEAK-BUY   { background: #2d3748; color: #a0aec0; }
+    .action-HOLD       { background: #2d3748; color: #a0aec0; }
+    .action-AVOID      { background: #4a1a1a; color: #fc8181; }
+    .action-FILTERED   { background: #2d2a1a; color: #ed8936; }
+
+    .prob-bar-wrap {
+      background: #2d3748;
+      border-radius: 3px;
+      height: 4px;
+      width: 60px;
+      margin-top: 3px;
+    }
+
+    .prob-bar {
+      height: 4px;
+      border-radius: 3px;
+      background: #63b3ed;
+    }
+
+    /* ── Refresh button ── */
+    .btn {
+      background: #2b6cb0;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn:hover    { background: #3182ce; }
+    .btn:disabled { background: #2d3748; color: #718096; cursor: not-allowed; }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+
+    /* ── Right panel — chat ── */
+    .chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #0f1117;
+    }
+
+    .chat-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #2d3748;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chat-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #48bb78;
+    }
+
+    .status-dot.thinking {
+      background: #ed8936;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .message {
+      display: flex;
+      gap: 12px;
+      max-width: 85%;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+
+    .message.bot { align-self: flex-start; }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .avatar.bot  { background: #2b6cb0; }
+    .avatar.user { background: #2d3748; }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 100%;
+    }
+
+    .bot  .bubble { background: #1a1d2e; border: 1px solid #2d3748; }
+    .user .bubble { background: #2b6cb0; }
+
+    .timestamp {
+      font-size: 11px;
+      color: #4a5568;
+      margin-top: 4px;
+      text-align: right;
+    }
+
+    .thinking-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 8px 0;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #718096;
+      animation: bounce 1.2s infinite;
+    }
+
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40%           { transform: translateY(-6px); }
+    }
+
+    /* ── Chat input ── */
+    .chat-input-area {
+      padding: 16px 24px;
+      border-top: 1px solid #2d3748;
+      display: flex;
+      gap: 10px;
+    }
+
+    .chat-input {
+      flex: 1;
+      background: #1a1d2e;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #e2e8f0;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .chat-input:focus { border-color: #63b3ed; }
+
+    .chat-input::placeholder { color: #4a5568; }
+
+    /* ── Suggestions ── */
+    .suggestions {
+      padding: 0 24px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .suggestion {
+      background: #1a1d2e;
+      border: 1px solid #2d3748;
+      border-radius: 16px;
+      padding: 5px 12px;
+      font-size: 12px;
+      color: #a0aec0;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .suggestion:hover {
+      border-color: #63b3ed;
+      color: #63b3ed;
+    }
+
+    /* ── Loading state ── */
+    .loading { color: #718096; font-size: 13px; text-align: center; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar       { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📈 Stock Prediction System</h1>
+  <span class="header-date" id="header-date"></span>
+</header>
+
+<div class="main">
+
+  <!-- Dashboard Panel -->
+  <div class="dashboard">
+
+    <!-- Macro Conditions -->
+    <div>
+      <div class="section-title">Market Conditions</div>
+      <div class="macro-grid" id="macro-grid">
+        <div class="macro-card">
+          <div class="label">VIX</div>
+          <div class="value" id="vix-value">—</div>
+          <div class="change" id="vix-change"></div>
+        </div>
+        <div class="macro-card">
+          <div class="label">10Y Treasury</div>
+          <div class="value" id="treasury-value">—</div>
+        </div>
+        <div class="macro-card">
+          <div class="label">Dollar Index</div>
+          <div class="value" id="dollar-value">—</div>
+        </div>
+      </div>
+      <div style="margin-top:10px; text-align:center;">
+        <span class="fear-badge" id="fear-badge">Loading...</span>
+      </div>
+    </div>
+
+    <!-- Today's Signals -->
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div class="section-title" style="margin-bottom:0">Today's Signals</div>
+        <button class="btn btn-sm" id="refresh-btn" onclick="refreshSignals()">
+          Refresh
+        </button>
+      </div>
+      <div id="signals-container">
+        <div class="loading">Loading signals...</div>
+      </div>
+    </div>
+
+    <!-- Model Performance -->
+    <div>
+      <div class="section-title">Historical Win Rates (6mo hold)</div>
+      <div id="winrates-container">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="status-dot" id="status-dot"></div>
+      <h2>AI Assistant</h2>
+      <span style="font-size:12px; color:#718096;">Powered by Groq + Llama 3.3 70B</span>
+    </div>
+
+    <div class="chat-messages" id="chat-messages">
+      <div class="message bot">
+        <div class="avatar bot">🤖</div>
+        <div>
+          <div class="bubble">
+            Hi! I'm your stock prediction assistant. I can explain today's signals,
+            run backtests, analyze market conditions, and answer questions about
+            any ticker in your watchlist. What would you like to know?
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="suggestions" id="suggestions">
+      <span class="suggestion" onclick="sendSuggestion(this)">What should I buy today?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Why is TSLA bearish?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">What's the market fear level?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Run a backtest on MSFT</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Explain NVDA signal</span>
+    </div>
+
+    <div class="chat-input-area">
+      <input
+        type="text"
+        class="chat-input"
+        id="chat-input"
+        placeholder="Ask about signals, market conditions, or any ticker..."
+        onkeydown="handleKeydown(event)"
+      >
+      <button class="btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const socket = io();
+  let isThinking = false;
+  let thinkingEl = null;
+
+  // ── Date ──────────────────────────────────────────────────────────────────
+  document.getElementById("header-date").textContent =
+    new Date().toLocaleDateString("en-US", {
+      weekday: "long", year: "numeric",
+      month: "long", day: "numeric"
+    });
+
+  // ── Socket events ─────────────────────────────────────────────────────────
+  socket.on("connected", () => {
+    document.getElementById("status-dot").classList.remove("thinking");
+  });
+
+  socket.on("thinking", () => {
+    isThinking = true;
+    document.getElementById("status-dot").classList.add("thinking");
+    thinkingEl = addThinkingIndicator();
+  });
+
+  socket.on("response", (data) => {
+    isThinking = false;
+    document.getElementById("status-dot").classList.remove("thinking");
+    if (thinkingEl) {
+      thinkingEl.remove();
+      thinkingEl = null;
+    }
+    addMessage("bot", data.message, data.timestamp);
+    document.getElementById("chat-input").disabled = false;
+    document.getElementById("chat-input").focus();
+  });
+
+  // ── Chat functions ────────────────────────────────────────────────────────
+  function sendMessage() {
+    const input = document.getElementById("chat-input");
+    const msg   = input.value.trim();
+    if (!msg || isThinking) return;
+
+    addMessage("user", msg, new Date().toLocaleTimeString("en-US", {
+      hour: "2-digit", minute: "2-digit"
+    }));
+
+    input.value    = "";
+    input.disabled = true;
+
+    // Hide suggestions after first message
+    document.getElementById("suggestions").style.display = "none";
+
+    socket.emit("message", { message: msg });
+  }
+
+  function sendSuggestion(el) {
+    document.getElementById("chat-input").value = el.textContent;
+    sendMessage();
+  }
+
+  function handleKeydown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function addMessage(role, text, timestamp) {
+    const container = document.getElementById("chat-messages");
+    const div       = document.createElement("div");
+    div.className   = `message ${role}`;
+
+    const avatar = role === "bot" ? "🤖" : "👤";
+    div.innerHTML = `
+      <div class="avatar ${role}">${avatar}</div>
+      <div>
+        <div class="bubble">${formatMessage(text)}</div>
+        <div class="timestamp">${timestamp || ""}</div>
+      </div>
+    `;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function addThinkingIndicator() {
+    const container = document.getElementById("chat-messages");
+    const div       = document.createElement("div");
+    div.className   = "message bot";
+    div.innerHTML   = `
+      <div class="avatar bot">🤖</div>
+      <div class="bubble">
+        <div class="thinking-indicator">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      </div>
+    `;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+  }
+
+  function formatMessage(text) {
+    // Basic formatting — bold, newlines, preserve structure
+    return text
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\n/g, "<br>")
+      .replace(/`(.*?)`/g, "<code>$1</code>");
+  }
+
+  // ── Dashboard data ────────────────────────────────────────────────────────
+  async function loadMacro() {
+    try {
+      const r    = await fetch("/api/macro");
+      const data = await r.json();
+
+      document.getElementById("vix-value").textContent = data.vix;
+      document.getElementById("treasury-value").textContent = data.treasury_10y + "%";
+      document.getElementById("dollar-value").textContent = data.dollar_index;
+
+      const change = data.vix_change;
+      const changeEl = document.getElementById("vix-change");
+      changeEl.textContent  = (change >= 0 ? "+" : "") + change.toFixed(2);
+      changeEl.style.color  = change >= 0 ? "#fc8181" : "#68d391";
+
+      const badge = document.getElementById("fear-badge");
+      badge.textContent  = `Fear: ${data.fear_level}`;
+      badge.className    = `fear-badge fear-${data.fear_level.split(" ")[0]}`;
+    } catch(e) {
+      console.error("Macro load error:", e);
+    }
+  }
+
+  async function loadSignals() {
+    try {
+      const r       = await fetch("/api/signals");
+      const data    = await r.json();
+      const signals = data.signals;
+      const container = document.getElementById("signals-container");
+
+      if (!signals || signals.length === 0) {
+        container.innerHTML = `
+          <div class="loading">No signals yet.
+            <button class="btn btn-sm" style="margin-left:8px"
+              onclick="refreshSignals()">Run predictions</button>
+          </div>`;
+        return;
+      }
+
+      // Sort by action priority
+      const priority = {
+        "STRONG BUY": 0, "BUY": 1, "WEAK BUY": 2,
+        "HOLD": 3, "AVOID": 4
+      };
+      signals.sort((a, b) => {
+        const pa = priority[a.action] ?? 3;
+        const pb = priority[b.action] ?? 3;
+        return pa - pb || b.prob_up - a.prob_up;
+      });
+
+      const rows = signals.map(s => {
+        const actionKey = s.action.replace(/\s+/g, "-").split("(")[0].trim();
+        const pct       = (s.prob_up * 100).toFixed(1);
+        const wr        = (s.win_rate * 100).toFixed(0);
+        return `
+          <tr>
+            <td><strong>${s.ticker}</strong></td>
+            <td>
+              <span class="action-badge action-${actionKey}">
+                ${s.action.split("(")[0].trim()}
+              </span>
+            </td>
+            <td>
+              <div>${pct}%</div>
+              <div class="prob-bar-wrap">
+                <div class="prob-bar" style="width:${pct}%"></div>
+              </div>
+            </td>
+            <td>${wr}%</td>
+            <td style="color:#718096">${s.horizon}</td>
+            <td>$${parseFloat(s.close_price).toFixed(2)}</td>
+          </tr>
+        `;
+      }).join("");
+
+      container.innerHTML = `
+        <table class="signal-table">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Action</th>
+              <th>Confidence</th>
+              <th>Win Rate</th>
+              <th>Horizon</th>
+              <th>Price</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    } catch(e) {
+      console.error("Signals load error:", e);
+    }
+  }
+
+  async function loadWinRates() {
+    try {
+      const r    = await fetch("/api/win_rates");
+      const data = await r.json();
+      const container = document.getElementById("winrates-container");
+
+      const rows = Object.entries(data).map(([ticker, horizons]) => {
+        const best = Math.max(...Object.values(horizons));
+        const pct  = (best * 100).toFixed(0);
+        const color = best >= 0.7 ? "#68d391" :
+                      best >= 0.6 ? "#63b3ed" : "#a0aec0";
+        return `
+          <div style="display:flex; justify-content:space-between;
+                      align-items:center; padding:6px 0;
+                      border-bottom:1px solid #2d3748;">
+            <span style="font-weight:600">${ticker}</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div class="prob-bar-wrap" style="width:80px">
+                <div class="prob-bar" style="width:${pct}%; background:${color}"></div>
+              </div>
+              <span style="color:${color}; font-size:13px">${pct}%</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      container.innerHTML = `<div>${rows}</div>`;
+    } catch(e) {
+      console.error("Win rates load error:", e);
+    }
+  }
+
+  async function refreshSignals() {
+    const btn = document.getElementById("refresh-btn");
+    btn.disabled     = true;
+    btn.textContent  = "Running...";
+
+    try {
+      await fetch("/api/refresh", { method: "POST" });
+      // Poll for completion
+      setTimeout(async () => {
+        await loadSignals();
+        btn.disabled    = false;
+        btn.textContent = "Refresh";
+      }, 30000); // wait 30s then reload
+    } catch(e) {
+      btn.disabled    = false;
+      btn.textContent = "Refresh";
+    }
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadMacro();
+  loadSignals();
+  loadWinRates();
+
+  // Auto-refresh dashboard every 5 minutes
+  setInterval(() => {
+    loadMacro();
+    loadSignals();
+  }, 5 * 60 * 1000);
+</script>
+</body>
+</html>

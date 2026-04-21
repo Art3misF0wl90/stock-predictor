@@ -8,6 +8,9 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import joblib
+import subprocess
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datetime import date, datetime
 from config import TICKERS
 
@@ -512,8 +515,370 @@ def print_flow_report(results: dict):
 
     print(f"\n{'═'*70}\n")
 
+# ── Dashboard Chart ───────────────────────────────────────────────────────────
+
+BG        = "#0f1117"
+PANEL_BG  = "#1a1d2e"
+GRID      = "#2d3748"
+TEXT      = "#e2e8f0"
+SUBTEXT   = "#718096"
+GREEN     = "#1D9E75"
+RED       = "#E24B4A"
+BLUE      = "#378ADD"
+ORANGE    = "#EF9F27"
+PURPLE    = "#9F7AEA"
+
+def make_color(val, low_good=True):
+    """Returns green/red/orange based on whether a value is good/bad/neutral."""
+    if val is None:
+        return SUBTEXT
+    if low_good:
+        return GREEN if val < 30 else RED if val > 70 else ORANGE
+    else:
+        return GREEN if val > 70 else RED if val < 30 else ORANGE
+
+def build_dashboard(results: dict) -> go.Figure:
+    """
+    Builds a single combined dark dashboard with sections per ticker.
+    Layout per ticker (5 rows):
+      Row 1: Expected move band + GEX walls (horizontal bar chart)
+      Row 2: PCR gauge
+      Row 3: IV Rank gauge
+      Row 4: Unusual volume table
+      Row 5: Model vs flow prediction summary
+    """
+    tickers = [t for t in results if "error" not in results[t]]
+    n       = len(tickers)
+
+    if n == 0:
+        print("No valid ticker data to chart.")
+        return go.Figure()
+
+    # One column per ticker, 5 rows
+    fig = make_subplots(
+        rows=5,
+        cols=n,
+        vertical_spacing=0.06,
+        horizontal_spacing=0.04,
+        subplot_titles=[t for t in tickers] + [""] * (4 * n),
+        row_heights=[0.25, 0.20, 0.20, 0.15, 0.20],
+        specs=[
+            [{"type": "xy"}]       * n,
+            [{"type": "xy"}]       * n,
+            [{"type": "xy"}]       * n,
+            [{"type": "xy"}]       * n,
+            [{"type": "xy"}]       * n,
+        ],
+    )
+
+    for col_idx, ticker in enumerate(tickers, start=1):
+        data     = results[ticker]
+        spot     = data.get("spot", 0)
+        em       = data.get("expected_move", {})
+        gex      = data.get("gex", {})
+        pcr      = data.get("pcr", {})
+        ivr      = data.get("iv_rank", {})
+        unusual  = data.get("unusual_volume", [])
+        ms       = data.get("model_signal", {})
+        pred     = data.get("prediction", {})
+        flow_bias= data.get("flow_bias", "Neutral")
+
+        # ── Row 1: Price range chart ──────────────────────────────────────────
+        # Shows: current price, expected move range, GEX walls
+        call_wall = gex.get("call_wall")
+        put_wall  = gex.get("put_wall")
+        upper     = em.get("upper_target", spot)
+        lower     = em.get("lower_target", spot)
+        em_pct    = em.get("expected_move_pct", 0)
+
+        # Price levels to plot
+        levels       = []
+        level_labels = []
+        level_colors = []
+
+        if call_wall:
+            levels.append(call_wall)
+            level_labels.append(f"Call wall ${call_wall}")
+            level_colors.append(RED)
+        if upper:
+            levels.append(upper)
+            level_labels.append(f"EM upper ${upper}")
+            level_colors.append(BLUE)
+        if spot:
+            levels.append(spot)
+            level_labels.append(f"Spot ${spot}")
+            level_colors.append(TEXT)
+        if lower:
+            levels.append(lower)
+            level_labels.append(f"EM lower ${lower}")
+            level_colors.append(BLUE)
+        if put_wall:
+            levels.append(put_wall)
+            level_labels.append(f"Put wall ${put_wall}")
+            level_colors.append(GREEN)
+
+        fig.add_trace(go.Bar(
+            x=level_labels,
+            y=levels,
+            marker_color=level_colors,
+            text=[f"${v}" for v in levels],
+            textposition="outside",
+            textfont=dict(color=TEXT, size=9),
+            showlegend=False,
+            hovertemplate="%{x}: $%{y}<extra></extra>",
+        ), row=1, col=col_idx)
+
+        # Spot price reference line
+        if spot:
+            fig.add_hline(
+                y=spot,
+                line_dash="dash",
+                line_color=TEXT,
+                line_width=1,
+                opacity=0.5,
+                row=1, col=col_idx,
+            )
+
+        # ── Row 2: PCR bar ────────────────────────────────────────────────────
+        pcr_val   = pcr.get("pcr_volume", 0)
+        pcr_color = RED if pcr_val > 1.2 else GREEN if pcr_val < 0.7 else ORANGE
+        call_vol  = pcr.get("call_volume", 0)
+        put_vol   = pcr.get("put_volume", 0)
+
+        fig.add_trace(go.Bar(
+            x=["Calls", "Puts"],
+            y=[call_vol, put_vol],
+            marker_color=[GREEN, RED],
+            text=[f"{call_vol:,}", f"{put_vol:,}"],
+            textposition="outside",
+            textfont=dict(color=TEXT, size=9),
+            showlegend=False,
+            hovertemplate="%{x}: %{y:,}<extra></extra>",
+        ), row=2, col=col_idx)
+
+        # PCR annotation
+        fig.add_annotation(
+            text=f"PCR {pcr_val:.3f} — {pcr.get('sentiment','N/A')}",
+            xref=f"x{col_idx + n}" if col_idx > 1 else "x2",
+            yref="paper",
+            x=0.5, y=0,
+            showarrow=False,
+            font=dict(size=9, color=pcr_color),
+            row=2, col=col_idx,
+        )
+
+        # ── Row 3: IV Rank indicator ──────────────────────────────────────────
+        iv_val   = ivr.get("iv_rank", 50) or 50
+        iv_label = ivr.get("iv_label", "N/A")
+        iv_color = make_color(iv_val, low_good=True)
+        cur_iv   = ivr.get("current_iv", 0) or 0
+
+        fig.add_trace(go.Bar(
+            x=["IV Rank"],
+            y=[iv_val],
+            marker_color=[iv_color],
+            text=[f"IVR {iv_val:.1f} — {iv_label[:18]}<br>IV={cur_iv:.3f}"],
+            textposition="outside",
+            textfont=dict(color=TEXT, size=9),
+            showlegend=False,
+        ), row=3, col=col_idx)
+
+        # Reference lines for cheap/expensive thresholds
+        fig.add_hline(y=30,  line_dash="dash", line_color=GREEN,
+                      line_width=1, opacity=0.5,
+                      annotation_text="Cheap", annotation_font_size=8,
+                      annotation_font_color=GREEN, row=3, col=col_idx)
+        fig.add_hline(y=70,  line_dash="dash", line_color=RED,
+                      line_width=1, opacity=0.5,
+                      annotation_text="Expensive", annotation_font_size=8,
+                      annotation_font_color=RED, row=3, col=col_idx)
+
+        # ── Row 4: Unusual volume ─────────────────────────────────────────────
+        if unusual:
+            top3        = unusual[:3]
+            u_labels    = [f"{u['type']} ${u['strike']}" for u in top3]
+            u_ratios    = [u["vol_oi_ratio"] for u in top3]
+            u_colors    = [RED if u["type"] == "PUT" else GREEN for u in top3]
+            u_hover     = [
+                f"{u['type']} ${u['strike']}<br>"
+                f"Vol: {u['volume']:,} / OI: {u['open_interest']:,}<br>"
+                f"Ratio: {u['vol_oi_ratio']}x  IV: {u['iv']}"
+                for u in top3
+            ]
+
+            fig.add_trace(go.Bar(
+                x=u_labels,
+                y=u_ratios,
+                marker_color=u_colors,
+                text=[f"{r}x" for r in u_ratios],
+                textposition="outside",
+                textfont=dict(color=TEXT, size=9),
+                showlegend=False,
+                hovertext=u_hover,
+                hoverinfo="text",
+            ), row=4, col=col_idx)
+
+            fig.add_hline(
+                y=2.0,
+                line_dash="dash",
+                line_color=ORANGE,
+                line_width=1,
+                opacity=0.5,
+                row=4, col=col_idx,
+            )
+        else:
+            fig.add_trace(go.Bar(
+                x=["No unusual volume"],
+                y=[0],
+                marker_color=[SUBTEXT],
+                showlegend=False,
+            ), row=4, col=col_idx)
+
+        # ── Row 5: Model vs flow prediction ───────────────────────────────────
+        if pred.get("status") != "insufficient_data" and "error" not in ms:
+            model_prob  = ms.get("prob_up", 0.5)
+            flow_score  = data.get("flow_score", 0)
+            agree       = pred.get("agreement", False)
+            conviction  = pred.get("conviction", "N/A")
+            model_dir   = pred.get("model_direction", "?")
+            flow_dir    = pred.get("flow_direction", "?")
+            price_tgt   = pred.get("price_target")
+            horizon     = ms.get("horizon", "?")
+
+            bar_colors = [
+                GREEN if model_prob >= 0.5 else RED,
+                GREEN if flow_score > 0 else RED if flow_score < 0 else ORANGE,
+            ]
+            bar_vals  = [model_prob, min(max((flow_score + 3) / 6, 0), 1)]
+            bar_text  = [
+                f"{model_prob:.1%} {model_dir} ({horizon})",
+                f"{flow_dir} score={flow_score}",
+            ]
+
+            fig.add_trace(go.Bar(
+                x=["Model", "Flow"],
+                y=bar_vals,
+                marker_color=bar_colors,
+                text=bar_text,
+                textposition="outside",
+                textfont=dict(color=TEXT, size=9),
+                showlegend=False,
+            ), row=5, col=col_idx)
+
+            fig.add_hline(
+                y=0.5,
+                line_dash="dash",
+                line_color=SUBTEXT,
+                line_width=1,
+                opacity=0.4,
+                row=5, col=col_idx,
+            )
+
+            # Agreement annotation
+            agree_color = GREEN if agree else RED
+            agree_str   = "✓ AGREE" if agree else "✗ SPLIT"
+            tgt_str     = f" → ${price_tgt}" if price_tgt else ""
+            fig.add_annotation(
+                text=f"{agree_str}{tgt_str}<br>"
+                     f"<span style='font-size:8px'>{conviction[:25]}</span>",
+                xref="paper", yref="paper",
+                x=(col_idx - 0.5) / n,
+                y=0.001,
+                showarrow=False,
+                font=dict(size=9, color=agree_color),
+            )
+        else:
+            fig.add_trace(go.Bar(
+                x=["No prediction"],
+                y=[0],
+                marker_color=[SUBTEXT],
+                showlegend=False,
+            ), row=5, col=col_idx)
+
+    # ── Global layout ─────────────────────────────────────────────────────────
+    fig.update_layout(
+        height=1000,
+        title=dict(
+            text=f"Options Flow Dashboard — {date.today()}",
+            font=dict(color=TEXT, size=18),
+            x=0.5,
+        ),
+        paper_bgcolor=BG,
+        plot_bgcolor=PANEL_BG,
+        font=dict(color=TEXT),
+        showlegend=False,
+        margin=dict(t=80, b=60, l=40, r=40),
+    )
+
+    # Style all axes
+    for i in range(1, 6):
+        for j in range(1, n + 1):
+            fig.update_xaxes(
+                showgrid=False,
+                zeroline=False,
+                tickfont=dict(color=SUBTEXT, size=8),
+                row=i, col=j,
+            )
+            fig.update_yaxes(
+                showgrid=True,
+                gridcolor=GRID,
+                zeroline=False,
+                tickfont=dict(color=SUBTEXT, size=8),
+                row=i, col=j,
+            )
+
+    # Row labels on leftmost column
+    row_titles = [
+        "Price Levels & Expected Move",
+        "Call vs Put Volume",
+        "IV Rank",
+        "Unusual Volume (vol/OI ratio)",
+        "Model vs Flow Signal",
+    ]
+    for i, title in enumerate(row_titles, start=1):
+        fig.update_yaxes(title_text=title,
+                         title_font=dict(size=9, color=SUBTEXT),
+                         row=i, col=1)
+
+    return fig
+
+def generate_options_dashboard(tickers: list = None, results: dict = None):
+    if tickers is None:
+        tickers = TICKERS
+
+    if results is None:
+        print(f"Scanning {len(tickers)} tickers for options flow...")
+        results = {}
+        for ticker in tickers:
+            results[ticker] = scan_ticker(ticker)
+
+    print("Building dashboard...")
+    fig = build_dashboard(results)
+
+    os.makedirs("charts", exist_ok=True)
+    out = os.path.join("charts", "options_flow_dashboard.html")
+    fig.write_html(out)
+    print(f"Dashboard saved: {out}")
+    return out
+
+def open_dashboard(tickers: list = None, results: dict = None):
+    """Generates options flow dashboard and opens it in browser."""
+    out = generate_options_dashboard(tickers, results=results)
+    try:
+        abs_path     = os.path.abspath(out) 
+        windows_path = subprocess.check_output(
+            ["wslpath", "-w", os.path.abspath(out)]
+        ).decode().strip()
+        print(f"Dashboard path: {windows_path}")
+        subprocess.Popen(["cmd.exe", "/c", "start", windows_path])
+        print("Opening in browser...")
+    except Exception as e:
+        print(f"Could not auto-open: {e}")
+        print(f"Open manually in browser: \\\\wsl.localhost\\Ubuntu\\home\\bluelulw\\stock-predcitor\\charts\\options_flow_dashboard.html")
+
 if __name__ == "__main__":
     import sys
-    tickers = sys.argv[1:] if len(sys.argv) > 1 else TICKERS
+    tickers = [t.upper() for t in sys.argv[1:]] if len(sys.argv) > 1 else TICKERS
     results = scan_all(tickers)
     print_flow_report(results)
+    open_dashboard(tickers, results=results)

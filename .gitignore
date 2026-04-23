@@ -9,3 +9,5 @@ notebooks/
 *.env
 .DS_Store
 Thumbs.db
+Miniconda3-latest-Linux-x86_64.sh
+*.sh

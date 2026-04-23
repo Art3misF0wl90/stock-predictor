@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import joblib
-import subprocess
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import date, datetime
@@ -155,17 +154,17 @@ def compute_gex(calls: pd.DataFrame,
 
     total_gex       = call_gex["gex"].sum() + put_gex["gex"].sum()
     max_call_strike = (
-        call_gex.loc[call_gex["gex"].idxmax(), "strike"]
+        float(call_gex.loc[call_gex["gex"].idxmax(), "strike"])
         if not call_gex.empty else None
     )
     max_put_strike  = (
-        put_gex.loc[put_gex["gex"].idxmin(), "strike"]
+        float(put_gex.loc[put_gex["gex"].idxmin(), "strike"])
         if not put_gex.empty else None
     )
     gex_bias = "Pinning" if total_gex > 0 else "Trending"
 
     return {
-        "total_gex":  round(total_gex, 2),
+        "total_gex":  round(float(total_gex), 2),
         "call_wall":  max_call_strike,
         "put_wall":   max_put_strike,
         "gex_bias":   gex_bias,
@@ -656,15 +655,15 @@ def build_dashboard(results: dict) -> go.Figure:
             hovertemplate="%{x}: %{y:,}<extra></extra>",
         ), row=2, col=col_idx)
 
-        # PCR annotation
+        # PCR annotation - row 2 axes are numbered n - 1 ... n + n
+        xref=f"x{col_idx + n}" if (n + col_idx) > 1 else "x",
         fig.add_annotation(
             text=f"PCR {pcr_val:.3f} — {pcr.get('sentiment','N/A')}",
-            xref=f"x{col_idx + n}" if col_idx > 1 else "x2",
+            xref = xref_pcr,
             yref="paper",
             x=0.5, y=0,
             showarrow=False,
             font=dict(size=9, color=pcr_color),
-            row=2, col=col_idx,
         )
 
         # ── Row 3: IV Rank indicator ──────────────────────────────────────────
@@ -862,19 +861,17 @@ def generate_options_dashboard(tickers: list = None, results: dict = None):
     return out
 
 def open_dashboard(tickers: list = None, results: dict = None):
-    """Generates options flow dashboard and opens it in browser."""
+    """Generates options flow dashboard and opens it in the default browser."""
+    import webbrowser
     out = generate_options_dashboard(tickers, results=results)
+    abs_path = os.path.abspath
     try:
-        abs_path     = os.path.abspath(out) 
-        windows_path = subprocess.check_output(
-            ["wslpath", "-w", os.path.abspath(out)]
-        ).decode().strip()
-        print(f"Dashboard path: {windows_path}")
-        subprocess.Popen(["cmd.exe", "/c", "start", windows_path])
-        print("Opening in browser...")
+        abs_path = os.path.abspath(out)
+        webbrowser.open(f"file://{abs_path}")
+        print(f"Opening in browser: {abs_path}")
     except Exception as e:
         print(f"Could not auto-open: {e}")
-        print(f"Open manually in browser: \\\\wsl.localhost\\Ubuntu\\home\\bluelulw\\stock-predcitor\\charts\\options_flow_dashboard.html")
+        print(f"Open manually in browser: {abs_path}")
 
 if __name__ == "__main__":
     import sys

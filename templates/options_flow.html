@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Options Flow — Stock Predictor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+ 
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+ 
+    /* ── Header ── */
+    header {
+      background: #1a1d2e;
+      border-bottom: 1px solid #2d3748;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+ 
+    .back-link {
+      color: #63b3ed;
+      text-decoration: none;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .back-link:hover { text-decoration: underline; }
+ 
+    header h1 { font-size: 17px; font-weight: 600; color: #63b3ed; flex: 1; }
+ 
+    .header-ts { font-size: 12px; color: #4a5568; white-space: nowrap; }
+ 
+    /* ── Scan bar ── */
+    .scan-bar {
+      padding: 12px 24px;
+      background: #1a1d2e;
+      border-bottom: 1px solid #2d3748;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+ 
+    .btn {
+      background: #2b6cb0;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn:hover    { background: #3182ce; }
+    .btn:disabled { background: #2d3748; color: #718096; cursor: not-allowed; }
+ 
+    .status-text { font-size: 13px; color: #718096; }
+ 
+    .chart-link {
+      margin-left: auto;
+      background: #242736;
+      border: 1px solid #4a5568;
+      color: #a0aec0;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      text-decoration: none;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .chart-link:hover { background: #2d3748; color: #e2e8f0; border-color: #63b3ed; }
+ 
+    /* ── Cards ── */
+    .content { padding: 24px; flex: 1; }
+ 
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+ 
+    .ticker-card {
+      background: #1a1d2e;
+      border: 1px solid #2d3748;
+      border-radius: 10px;
+      padding: 16px;
+      transition: border-color 0.2s;
+    }
+    .ticker-card:hover { border-color: #4a5568; }
+ 
+    /* Card header */
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+ 
+    .card-ticker { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+    .card-price  { font-size: 20px; font-weight: 700; }
+    .card-expiry { font-size: 11px; color: #718096; margin-top: 3px; }
+ 
+    /* Flow bias badge */
+    .flow-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    .flow-Bullish { background: #1a4731; color: #48bb78; }
+    .flow-Bearish { background: #4a1a1a; color: #fc8181; }
+    .flow-Neutral { background: #2d3748; color: #a0aec0; }
+ 
+    /* Prediction box */
+    .pred-box {
+      background: #242736;
+      border-radius: 7px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+ 
+    .pred-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+ 
+    .agree-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .agree-true  { background: #1a4731; color: #48bb78; }
+    .agree-false { background: #4a1a1a; color: #fc8181; }
+ 
+    .pred-detail {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #a0aec0;
+    }
+ 
+    /* Metrics row */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+ 
+    .metric-box {
+      background: #242736;
+      border-radius: 6px;
+      padding: 8px;
+      text-align: center;
+    }
+ 
+    .metric-label { font-size: 10px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+    .metric-value { font-size: 14px; font-weight: 700; }
+    .metric-sub   { font-size: 10px; color: #718096; margin-top: 2px; }
+ 
+    /* Expected move bar */
+    .em-bar {
+      background: #242736;
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 10px;
+      gap: 8px;
+    }
+ 
+    .em-label { color: #718096; white-space: nowrap; }
+    .em-value { font-weight: 600; }
+    .em-range  { color: #718096; font-size: 11px; white-space: nowrap; }
+ 
+    /* Unusual volume */
+    .unusual-section { margin-top: 4px; }
+    .unusual-title   { font-size: 10px; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+ 
+    .unusual-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      padding: 5px 0;
+      border-bottom: 1px solid #242736;
+    }
+    .unusual-row:last-child { border-bottom: none; }
+ 
+    .u-call { color: #48bb78; font-weight: 600; }
+    .u-put  { color: #fc8181; font-weight: 600; }
+    .u-ratio { color: #ed8936; }
+    .u-vol   { color: #718096; font-size: 11px; }
+ 
+    /* Error card */
+    .error-card {
+      background: #2d1a1a;
+      border: 1px solid #742a2a;
+      border-radius: 10px;
+      padding: 16px;
+      color: #fc8181;
+      font-size: 13px;
+    }
+ 
+    /* Loading state */
+    .loading-state {
+      text-align: center;
+      padding: 80px 24px;
+      color: #718096;
+    }
+ 
+    .loading-state .headline { font-size: 16px; margin-bottom: 8px; }
+    .loading-state .sub      { font-size: 13px; color: #4a5568; }
+ 
+    .spinner {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 3px solid #2d3748;
+      border-top-color: #63b3ed;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 16px;
+    }
+ 
+    @keyframes spin { to { transform: rotate(360deg); } }
+ 
+    ::-webkit-scrollbar       { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+  </style>
+</head>
+<body>
+ 
+<header>
+  <a href="/" class="back-link">← Dashboard</a>
+  <h1>📊 Options Flow</h1>
+  <span class="header-ts" id="header-ts"></span>
+</header>
+ 
+<div class="scan-bar">
+  <button class="btn" id="scan-btn" onclick="startScan()">Scan All Tickers</button>
+  <span class="status-text" id="status-text">Click Scan to analyze options chains for all watchlist tickers</span>
+  <a href="/api/options-flow/chart" target="_blank" class="chart-link" id="chart-link" style="display:none">
+    View Plotly Chart ↗
+  </a>
+</div>
+ 
+<div class="content">
+  <div id="main-container">
+    <div class="loading-state">
+      <div class="headline">No scan data</div>
+      <div class="sub">Click "Scan All Tickers" to fetch options flow — takes ~30–60 seconds</div>
+    </div>
+  </div>
+</div>
+ 
+<script>
+  let pollTimer = null;
+ 
+  // ── Scan ──────────────────────────────────────────────────────────────────
+  async function startScan() {
+    const btn = document.getElementById("scan-btn");
+    btn.disabled    = true;
+    btn.textContent = "Scanning…";
+    setStatus("Scanning options chains for all tickers…");
+    showLoading("Scanning options chains…", "This takes 30–60 seconds");
+ 
+    try {
+      await fetch("/api/options-flow/scan", { method: "POST" });
+      pollTimer = setInterval(checkStatus, 3000);
+    } catch (e) {
+      setStatus("Error starting scan. Try again.");
+      resetBtn();
+    }
+  }
+ 
+  async function checkStatus() {
+    try {
+      const r    = await fetch("/api/options-flow");
+      const data = await r.json();
+ 
+      if (!data.scanning && data.has_data) {
+        clearInterval(pollTimer); pollTimer = null;
+        resetBtn("Rescan");
+        const n = Object.keys(data.results).length;
+        setStatus(`${n} ticker${n !== 1 ? "s" : ""} scanned`);
+        if (data.timestamp) {
+          document.getElementById("header-ts").textContent = `Last scan: ${data.timestamp}`;
+        }
+        document.getElementById("chart-link").style.display = "inline-block";
+        renderCards(data.results);
+ 
+      } else if (!data.scanning && !data.has_data) {
+        clearInterval(pollTimer); pollTimer = null;
+        resetBtn();
+        setStatus("Scan failed — check server logs and try again.");
+      }
+      // still scanning: keep polling
+    } catch (e) {
+      console.error("Status check error:", e);
+    }
+  }
+ 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function setStatus(msg) {
+    document.getElementById("status-text").textContent = msg;
+  }
+ 
+  function resetBtn(label = "Scan All Tickers") {
+    const btn = document.getElementById("scan-btn");
+    btn.disabled    = false;
+    btn.textContent = label;
+  }
+ 
+  function showLoading(headline, sub) {
+    document.getElementById("main-container").innerHTML = `
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <div class="headline">${headline}</div>
+        <div class="sub">${sub}</div>
+      </div>`;
+  }
+ 
+  // ── Rendering ─────────────────────────────────────────────────────────────
+  function renderCards(results) {
+    const grid = document.createElement("div");
+    grid.className = "cards-grid";
+ 
+    for (const [ticker, data] of Object.entries(results)) {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = buildCard(ticker, data);
+      grid.appendChild(wrapper.firstElementChild);
+    }
+ 
+    const container = document.getElementById("main-container");
+    container.innerHTML = "";
+    container.appendChild(grid);
+  }
+ 
+  function buildCard(ticker, data) {
+    if (data.error) {
+      return `<div class="error-card"><strong>${ticker}</strong> — ${data.error}</div>`;
+    }
+ 
+    const spot    = data.spot      || 0;
+    const pcr     = data.pcr       || {};
+    const ivr     = data.iv_rank   || {};
+    const gex     = data.gex       || {};
+    const em      = data.expected_move || {};
+    const ms      = data.model_signal  || {};
+    const pred    = data.prediction    || {};
+    const unusual = data.unusual_volume || [];
+    const flow    = data.flow_bias || "Neutral";
+ 
+    // Colors
+    const pcrVal   = pcr.pcr_volume || 0;
+    const pcrColor = pcrVal < 0.7 ? "#48bb78" : pcrVal > 1.2 ? "#fc8181" : "#ed8936";
+    const ivrVal   = ivr.iv_rank != null ? ivr.iv_rank : 50;
+    const ivrColor = ivrVal < 30 ? "#48bb78" : ivrVal > 70 ? "#fc8181" : "#ed8936";
+    const gexColor = gex.gex_bias === "Pinning" ? "#63b3ed" : "#ed8936";
+ 
+    const hasModel = !ms.error && ms.direction;
+    const hasPred  = pred.status !== "insufficient_data" && hasModel;
+ 
+    const modelColor = ms.direction === "UP" ? "#48bb78" : "#fc8181";
+    const flowColor  = flow === "Bullish" ? "#48bb78" : flow === "Bearish" ? "#fc8181" : "#a0aec0";
+    const flowArrow  = flow === "Bullish" ? "▲" : flow === "Bearish" ? "▼" : "─";
+ 
+    // Prediction block
+    let predHtml = "";
+    if (hasPred) {
+      const agree      = pred.agreement;
+      const conviction = (pred.conviction || "").slice(0, 28);
+      const tgt        = pred.price_target ? `→ $${pred.price_target}` : "";
+      predHtml = `
+        <div class="pred-box">
+          <div class="pred-row">
+            <div>
+              <span class="agree-badge agree-${agree}">${agree ? "✓ AGREE" : "✗ SPLIT"}</span>
+              <span style="font-size:11px; color:#718096; margin-left:6px">${conviction}</span>
+            </div>
+            ${tgt ? `<span style="font-size:12px; color:#63b3ed; white-space:nowrap">${tgt}</span>` : ""}
+          </div>
+          <div class="pred-detail">
+            Model: <span style="color:${modelColor}">${ms.direction === "UP" ? "▲" : "▼"} ${ms.direction}</span>
+            &nbsp;${(ms.prob_up * 100).toFixed(1)}%&nbsp;(${ms.horizon || ""})
+            &nbsp;·&nbsp;
+            Flow: <span style="color:${flowColor}">${flowArrow} ${flow}</span>
+          </div>
+        </div>`;
+    } else if (hasModel) {
+      predHtml = `
+        <div class="pred-box">
+          <div class="pred-detail">
+            Model: <span style="color:${modelColor}">${ms.direction === "UP" ? "▲" : "▼"} ${ms.direction}</span>
+            &nbsp;${(ms.prob_up * 100).toFixed(1)}%&nbsp;(${ms.horizon || ""})
+            &nbsp;·&nbsp;
+            Flow: <span style="color:${flowColor}">${flowArrow} ${flow}</span>
+          </div>
+        </div>`;
+    } else {
+      predHtml = `
+        <div class="pred-box" style="color:#718096; font-size:12px">
+          No model signal — run predictions first
+        </div>`;
+    }
+ 
+    // Expected move
+    const emHtml = em.expected_move ? `
+      <div class="em-bar">
+        <span class="em-label">Expected Move</span>
+        <span class="em-value">±$${em.expected_move} (${em.expected_move_pct}%)</span>
+        <span class="em-range">$${em.lower_target} – $${em.upper_target}</span>
+      </div>` : "";
+ 
+    // Unusual volume
+    let unusualHtml = "";
+    if (unusual.length > 0) {
+      const rows = unusual.slice(0, 3).map(u => `
+        <div class="unusual-row">
+          <span class="${u.type === "CALL" ? "u-call" : "u-put"}">${u.type} $${u.strike}</span>
+          <span class="u-ratio">${u.vol_oi_ratio}× vol/OI</span>
+          <span class="u-vol">${u.volume.toLocaleString()} vol</span>
+        </div>`).join("");
+      unusualHtml = `
+        <div class="unusual-section">
+          <div class="unusual-title">Unusual Volume (${unusual.length} flagged)</div>
+          ${rows}
+        </div>`;
+    } else {
+      unusualHtml = `<div style="font-size:11px; color:#4a5568; margin-top:4px">No unusual volume detected</div>`;
+    }
+ 
+    // GEX walls sub-label
+    const gexWalls = [
+      gex.call_wall ? `C $${gex.call_wall}` : "",
+      gex.put_wall  ? `P $${gex.put_wall}`  : "",
+    ].filter(Boolean).join(" · ");
+ 
+    return `
+      <div class="ticker-card">
+        <div class="card-header">
+          <div>
+            <div class="card-ticker">${ticker}</div>
+            <div class="card-expiry">Exp: ${data.nearest_expiry || "—"} (${data.dte || "?"}d)</div>
+          </div>
+          <div style="text-align:right">
+            <div class="card-price">$${spot.toFixed(2)}</div>
+            <span class="flow-badge flow-${flow}">${flowArrow} ${flow}</span>
+          </div>
+        </div>
+ 
+        ${predHtml}
+ 
+        <div class="metrics-row">
+          <div class="metric-box">
+            <div class="metric-label">PCR Vol</div>
+            <div class="metric-value" style="color:${pcrColor}">${pcrVal.toFixed(3)}</div>
+            <div class="metric-sub">${pcr.sentiment || "N/A"}</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">IV Rank</div>
+            <div class="metric-value" style="color:${ivrColor}">
+              ${ivr.iv_rank != null ? ivr.iv_rank.toFixed(1) + "%" : "N/A"}
+            </div>
+            <div class="metric-sub">${(ivr.iv_label || "").slice(0, 14)}</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">GEX</div>
+            <div class="metric-value" style="color:${gexColor}">${gex.gex_bias || "N/A"}</div>
+            <div class="metric-sub">${gexWalls}</div>
+          </div>
+        </div>
+ 
+        ${emHtml}
+        ${unusualHtml}
+      </div>`;
+  }
+ 
+  // ── Init: check for cached data on load ───────────────────────────────────
+  (async () => {
+    try {
+      const r    = await fetch("/api/options-flow");
+      const data = await r.json();
+      if (data.has_data) {
+        const n = Object.keys(data.results).length;
+        setStatus(`${n} ticker${n !== 1 ? "s" : ""} scanned`);
+        if (data.timestamp) {
+          document.getElementById("header-ts").textContent = `Last scan: ${data.timestamp}`;
+        }
+        document.getElementById("chart-link").style.display = "inline-block";
+        resetBtn("Rescan");
+        renderCards(data.results);
+      } else if (data.scanning) {
+        resetBtn("Scanning…");
+        document.getElementById("scan-btn").disabled = true;
+        setStatus("Scan in progress…");
+        pollTimer = setInterval(checkStatus, 3000);
+      }
+    } catch (e) {
+      console.error("Init check failed:", e);
+    }
+  })();
+</script>
+ 
+</body>
+</html>

@@ -1,8 +1,7 @@
 import os
-import json
 import threading
 from datetime import date, datetime
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from flask_socketio import SocketIO, emit
 
 from predict import run_predictions, TICKER_WIN_RATES
@@ -18,6 +17,9 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Global conversation history per session
 conversation_histories = {}
 
+# Cache for options flow scan results
+_options_cache: dict = {"results": None, "timestamp": None, "scanning": False}
+ 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -123,6 +125,54 @@ def api_analyze(ticker):
     from analyze import analyze_ticker
     result = analyze_ticker(ticker.upper())
     return jsonify(result)
+
+# ── Options Flow ───────────────────────────────────────────────────────────────
+ 
+@app.route("/options-flow")
+def options_flow_page():
+    return render_template("options_flow.html")
+ 
+@app.route("/api/options-flow")
+def api_options_flow():
+    return jsonify({
+        "scanning":  _options_cache["scanning"],
+        "has_data":  _options_cache["results"] is not None,
+        "results":   _options_cache["results"] or {},
+        "timestamp": _options_cache["timestamp"],
+    })
+ 
+@app.route("/api/options-flow/scan", methods=["POST"])
+def api_options_flow_scan():
+    if _options_cache["scanning"]:
+        return jsonify({"status": "already_scanning"})
+ 
+    def _scan():
+        _options_cache["scanning"] = True
+        try:
+            from options_flow import scan_all
+            from config import TICKERS
+            _options_cache["results"]   = scan_all(TICKERS)
+            _options_cache["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        except Exception as e:
+            print(f"Options flow scan error: {e}")
+        finally:
+            _options_cache["scanning"] = False
+ 
+    threading.Thread(target=_scan, daemon=True).start()
+    return jsonify({"status": "started"})
+ 
+@app.route("/api/options-flow/chart")
+def api_options_flow_chart():
+    chart_path = os.path.join("charts", "options_flow_dashboard.html")
+    if _options_cache.get("results"):
+        from options_flow import generate_options_dashboard
+        generate_options_dashboard(results=_options_cache["results"])
+    if not os.path.exists(chart_path):
+        return "No chart available — run a scan first.", 404
+    with open(chart_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    return Response(html, content_type="text/html")
+ 
 
 # ── WebSocket for bot chat ─────────────────────────────────────────────────────
 

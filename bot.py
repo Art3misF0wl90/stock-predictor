@@ -17,8 +17,8 @@ from config import TICKERS
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 MODEL  = "llama-3.3-70b-versatile"
 
-SYSTEM_PROMPT = """You are a stock prediction assistant with access to a machine
-learning prediction system trained on AAPL, MSFT, TSLA, JPM, and NVDA.
+SYSTEM_PROMPT = """You are a stock prediction and portfolio management assistant with access to a machine
+learning prediction system and a live portfolio tracker.
 
 The models use technical indicators, macroeconomic data, news sentiment scored
 by FinBERT, and earnings surprise data. They were trained on 2015-2024 data.
@@ -60,6 +60,23 @@ Available tools:
 - explain_signal: {"ticker": "NVDA"}
 - analyze_any_ticker: {"ticker": "PLTR"}
 - add_to_watchlist: {"ticker": "PLTR"}
+- get_portfolio_summary: Get current portfolio holdings, P&L, cash balance, total value
+- get_portfolio_advice: Get AI-driven daily action items — what to buy/sell/trim based on signals + holdings
+- portfolio_buy: {"ticker": "AAPL", "shares": 10, "price": 195.50, "deduct_cash": true}
+- portfolio_sell: {"ticker": "TSLA", "shares": 5, "price": 180.00, "add_to_cash": true}
+- portfolio_set_cash: {"amount": 10000}
+- portfolio_add_holding: {"ticker": "MSFT", "shares": 20, "avg_cost": 380.00, "notes": "long term hold"}
+- portfolio_remove_holding: {"ticker": "GME"}
+- get_transactions: Get recent portfolio transaction history
+ 
+Portfolio guidance rules:
+- When user asks about their portfolio, IMMEDIATELY call get_portfolio_summary
+- When user asks what to do today with their portfolio, call get_portfolio_advice
+- When user says they bought or sold something, call portfolio_buy or portfolio_sell
+- When user wants to set their starting cash, call portfolio_set_cash
+- Always factor in cash position when making buy recommendations — never suggest buying more than available cash
+- Flag concentrated positions (>35% of portfolio in one stock)
+- Cross-reference holdings against today's signals automatically when giving portfolio advice
 
 If you need to call a tool, respond with ONLY the JSON above, nothing else.
 If you do NOT need a tool, respond normally in plain English.
@@ -250,29 +267,39 @@ def tool_explain_signal(ticker: str):
         }
     }
 
-def tool_analyze_any_ticker(ticker: str) -> str:
-    from analyze import analyze_ticker
-    print(f"  [Bot] Analyzing {ticker.upper()}...")
-    result = analyze_ticker(ticker)
-    return json.dumps(result, default=str)
+def tool_get_portfolio_summary() -> str:
+    from portfolio import get_portfolio_summary
+    return json.dumps(get_portfolio_summary(), default=str)
 
-def tool_add_to_watchlist(ticker: str) -> str:
-    from analyze import add_ticker_to_watchlist, analyze_ticker
-    ticker = ticker.upper()
+def tool_get_portfolio_advice() -> str:
+    from portfolio import get_portfolio_advice
+    signals_df = get_todays_signals()
+    signals = signals_df.to_dict("records") if not signals_df.empty else []
+    return json.dumps(get_portfolio_advice(signals), default=str)
 
-    # Run quality check first
-    quality_result = analyze_ticker(ticker)
-    quality_score  = quality_result.get("quality", {}).get("score", 0)
+def tool_get_portfolio_buy(ticker: str, shares: float, price: float, deduct_cash: bool = True) -> str:
+    from portfolio import buy_shares
+    return json.dumps(buy_shares(ticker, shares, price, deduct_cash), default=str)
 
-    if quality_score < 40:
-        return json.dumps({
-            "status":  "rejected",
-            "reason":  "Quality score too low for reliable predictions",
-            "quality": quality_result.get("quality", {}),
-        })
+def tool_portfolio_sell(ticker: str, shares: float, price: float, add_to_cash: bool=True) -> str:
+    from portfolio import sell_shares
+    return json.dumps(sell_shares(ticker, shares, price, add_to_cash), default=str)
 
-    result = add_ticker_to_watchlist(ticker)
-    return json.dumps(result, default=str)
+def tool_portfolio_set_cash(amount: float) -> str:
+    from portfolio import set_cash
+    return json.dumps(set_cash(amount), default=str)
+
+def tool_portfolio_add_holding(ticker: str, shares: float, avg_cost: float, notes: str = "") -> str:
+    from portfolio import upsert_holding
+    return json.dumps(upsert_holding(ticker, shares, avg_cost, notes), default=str)
+
+def tool_portfolio_remove_holding(ticker: str) -> str:
+    from portfolio import remove_holding
+    return json.dumps(remove_holding(ticker), default=str)
+
+def tool_get_transactions(limit: int = 20) -> str:
+    from portfolio import get_transactions
+    return json.dumps(get_transactions(limit), default=str)
 
 def tool_analyze_any_ticker(ticker: str) -> str:
     from analyze import analyze_ticker
@@ -316,6 +343,37 @@ def dispatch_tool(tool_name: str, tool_input: dict) -> str:
             result = tool_analyze_any_ticker(tool_input.get("ticker", ""))
         elif tool_name == "add_to_watchlist":
             result = tool_add_to_watchlist(tool_input.get("ticker", ""))
+        elif tool_name == "get_portfolio_summary":
+            result = tool_get_portfolio_summary()
+        elif tool_name == "get_portfolio_advice":
+            result = tool_get_portfolio_advice()
+        elif tool_name == "portfolio_buy":
+            result = tool_portfolio_buy(
+                tool_input.get("ticker", ""),
+                float(tool_input.get("shares", 0)),
+                float(tool_input.get("price", 0)),
+                tool_input.get("deduct_cash", True),
+            )
+        elif tool_name == "portfolio_sell":
+            result = tool_portfolio_sell(
+                tool_input.get("ticker", ""),
+                float(tool_input.get("shares", 0)),
+                float(tool_input.get("price", 0)),
+                tool_input.get("add_to_cash", True),
+            )
+        elif tool_name == "portfolio_set_cash":
+            result = tool_portfolio_set_cash(float(tool_input.get("amount", 0)))
+        elif tool_name == "portfolio_add_holding":
+            result = tool_portfolio_add_holding(
+                tool_input.get("ticker", ""),
+                float(tool_input.get("shares", 0)),
+                float(tool_input.get("avg_cost", 0)),
+                tool_input.get("notes", ""),
+            )
+        elif tool_name == "portfolio_remove_holding":
+            result = tool_portfolio_remove_holding(tool_input.get("ticker", ""))
+        elif tool_name == "get_transactions":
+            result = tool_get_transactions(int(tool_input.get("limit", 20)))
         else:
             result = {"error": f"Unknown tool: {tool_name}"}
     except Exception as e:

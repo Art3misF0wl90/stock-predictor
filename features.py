@@ -90,8 +90,8 @@ def add_features(df: pd.DataFrame,
 
     for window in [3, 5, 10]:
         df[f"up_days_{window}"] = sum(
-            (df["Close"].shift(i) > df["Close"].shift(i + 1)).astype(int)
-            for i in range(window)
+            [(df["Close"].shift(i) > df["Close"].shift(i + 1)).astype(int)
+             for i in range(window)]
         )
 
     high_low   = df["High"] - df["Low"]

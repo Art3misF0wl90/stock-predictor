@@ -14,7 +14,7 @@ from features import add_features, get_feature_columns
 from splitter import time_split
 from config import TICKERS
 
-TICKERS_NO_EARNINGS = ["TSLA"]
+TICKERS_NO_EARNINGS = ["TSLA", "SPY"]
 
 def tune_ticker(ticker, df, macro_df, sentiment, earnings, n_trials=150):
     print(f"\nTuning {ticker} ({n_trials} trials)...")

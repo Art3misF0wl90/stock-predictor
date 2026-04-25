@@ -164,6 +164,7 @@ def compute_gex(calls: pd.DataFrame,
     gex_bias = "Pinning" if total_gex > 0 else "Trending"
 
     return {
+        # BUG 1 FIX: was round(float(total_gex, 2)) — float() only takes 1 arg
         "total_gex":  round(float(total_gex), 2),
         "call_wall":  max_call_strike,
         "put_wall":   max_put_strike,
@@ -337,16 +338,14 @@ def generate_prediction(model_signal: dict,
     if "error" in model_signal or not expected_move:
         return {"status": "insufficient_data"}
 
-    prob_up       = model_signal["prob_up"]
-    model_dir     = model_signal["direction"]
-    horizon       = model_signal["horizon"]
+    prob_up   = model_signal["prob_up"]
+    model_dir = model_signal["direction"]
+    horizon   = model_signal["horizon"]
 
-    # Determine if model and flow agree
     flow_is_bullish  = flow_bias == "Bullish"
     model_is_bullish = model_dir == "UP"
     agreement        = flow_is_bullish == model_is_bullish
 
-    # Price targets based on expected move
     if model_is_bullish:
         price_target = expected_move.get("upper_target")
         target_label = "UP target"
@@ -358,26 +357,23 @@ def generate_prediction(model_signal: dict,
     dte      = expected_move.get("days_to_expiry", 0)
 
     if agreement:
-        if abs(prob_up - 0.5) > 0.1:
-            conviction = "HIGH"
-        else:
-            conviction = "MODERATE"
+        conviction = "HIGH" if abs(prob_up - 0.5) > 0.1 else "MODERATE"
     else:
         conviction = "LOW — model and flow disagree"
 
     return {
-        "model_direction":  model_dir,
-        "model_prob_up":    prob_up,
-        "model_horizon":    horizon,
-        "flow_direction":   "UP" if flow_is_bullish else "DOWN",
-        "flow_bias":        flow_bias,
-        "agreement":        agreement,
-        "conviction":       conviction,
-        "price_target":     price_target,
-        "target_label":     target_label,
-        "move_pct":         move_pct,
-        "dte":              dte,
-        "spot":             spot,
+        "model_direction": model_dir,
+        "model_prob_up":   prob_up,
+        "model_horizon":   horizon,
+        "flow_direction":  "UP" if flow_is_bullish else "DOWN",
+        "flow_bias":       flow_bias,
+        "agreement":       agreement,
+        "conviction":      conviction,
+        "price_target":    price_target,
+        "target_label":    target_label,
+        "move_pct":        move_pct,
+        "dte":             dte,
+        "spot":            spot,
     }
 
 # ── Full Scanner ──────────────────────────────────────────────────────────────
@@ -405,7 +401,6 @@ def scan_ticker(ticker: str) -> dict:
     em           = compute_expected_move(spot, iv_rank.get("current_iv", 0), dte)
     model_signal = get_model_signal(ticker)
 
-    # Flow score
     flow_score = 0
     if pcr["pcr_volume"] < 0.7:
         flow_score += 1
@@ -465,7 +460,6 @@ def print_flow_report(results: dict):
         print(f"  {ticker} — ${spot}  |  Expiry: {data['nearest_expiry']} ({data['dte']}d)")
         print(f"  {'─'*68}")
 
-        # Model signal
         if "error" not in ms:
             model_arrow = "▲" if ms["direction"] == "UP" else "▼"
             print(f"  MODEL  {model_arrow} {ms['direction']:<6} "
@@ -475,24 +469,20 @@ def print_flow_report(results: dict):
         else:
             print(f"  MODEL  N/A — {ms.get('error', 'unknown')}")
 
-        # Flow signal
         flow_arrow = "▲" if data["flow_bias"] == "Bullish" else ("▼" if data["flow_bias"] == "Bearish" else "─")
         print(f"  FLOW   {flow_arrow} {data['flow_bias']:<6} "
               f"PCR={pcr['pcr_volume']:.3f}  "
               f"IVR={ivr.get('iv_rank', 'N/A')}  "
               f"{ivr.get('iv_label', '')}")
 
-        # GEX
         print(f"  GEX    {gex.get('gex_bias', 'N/A'):<20} "
               f"Call wall=${gex.get('call_wall', 'N/A')}  "
               f"Put wall=${gex.get('put_wall', 'N/A')}")
 
-        # Expected move + price target
         if em:
             print(f"  MOVE   ±${em['expected_move']} ({em['expected_move_pct']}%)  "
                   f"→  DOWN: ${em['lower_target']}  |  UP: ${em['upper_target']}")
 
-        # Combined prediction
         if pred.get("status") != "insufficient_data":
             agree_str = "✓ AGREE" if pred["agreement"] else "✗ DISAGREE"
             print(f"  {'─'*68}")
@@ -504,7 +494,6 @@ def print_flow_report(results: dict):
                 print(f"    {pred['target_label']}: ${pred['price_target']} "
                       f"({pred['move_pct']}% move in {pred['dte']}d)")
 
-        # Unusual volume
         if data["unusual_volume"]:
             print(f"  UNUSUAL  {len(data['unusual_volume'])} contracts flagged:")
             for u in data["unusual_volume"][:3]:
@@ -516,19 +505,18 @@ def print_flow_report(results: dict):
 
 # ── Dashboard Chart ───────────────────────────────────────────────────────────
 
-BG        = "#0f1117"
-PANEL_BG  = "#1a1d2e"
-GRID      = "#2d3748"
-TEXT      = "#e2e8f0"
-SUBTEXT   = "#718096"
-GREEN     = "#1D9E75"
-RED       = "#E24B4A"
-BLUE      = "#378ADD"
-ORANGE    = "#EF9F27"
-PURPLE    = "#9F7AEA"
+BG       = "#0f1117"
+PANEL_BG = "#1a1d2e"
+GRID     = "#2d3748"
+TEXT     = "#e2e8f0"
+SUBTEXT  = "#718096"
+GREEN    = "#1D9E75"
+RED      = "#E24B4A"
+BLUE     = "#378ADD"
+ORANGE   = "#EF9F27"
+PURPLE   = "#9F7AEA"
 
 def make_color(val, low_good=True):
-    """Returns green/red/orange based on whether a value is good/bad/neutral."""
     if val is None:
         return SUBTEXT
     if low_good:
@@ -537,15 +525,6 @@ def make_color(val, low_good=True):
         return GREEN if val > 70 else RED if val < 30 else ORANGE
 
 def build_dashboard(results: dict) -> go.Figure:
-    """
-    Builds a single combined dark dashboard with sections per ticker.
-    Layout per ticker (5 rows):
-      Row 1: Expected move band + GEX walls (horizontal bar chart)
-      Row 2: PCR gauge
-      Row 3: IV Rank gauge
-      Row 4: Unusual volume table
-      Row 5: Model vs flow prediction summary
-    """
     tickers = [t for t in results if "error" not in results[t]]
     n       = len(tickers)
 
@@ -553,7 +532,6 @@ def build_dashboard(results: dict) -> go.Figure:
         print("No valid ticker data to chart.")
         return go.Figure()
 
-    # One column per ticker, 5 rows
     fig = make_subplots(
         rows=5,
         cols=n,
@@ -561,64 +539,41 @@ def build_dashboard(results: dict) -> go.Figure:
         horizontal_spacing=0.04,
         subplot_titles=[t for t in tickers] + [""] * (4 * n),
         row_heights=[0.25, 0.20, 0.20, 0.15, 0.20],
-        specs=[
-            [{"type": "xy"}]       * n,
-            [{"type": "xy"}]       * n,
-            [{"type": "xy"}]       * n,
-            [{"type": "xy"}]       * n,
-            [{"type": "xy"}]       * n,
-        ],
+        specs=[[{"type": "xy"}] * n] * 5,
     )
 
     for col_idx, ticker in enumerate(tickers, start=1):
-        data     = results[ticker]
-        spot     = data.get("spot", 0)
-        em       = data.get("expected_move", {})
-        gex      = data.get("gex", {})
-        pcr      = data.get("pcr", {})
-        ivr      = data.get("iv_rank", {})
-        unusual  = data.get("unusual_volume", [])
-        ms       = data.get("model_signal", {})
-        pred     = data.get("prediction", {})
-        flow_bias= data.get("flow_bias", "Neutral")
+        data      = results[ticker]
+        spot      = data.get("spot", 0)
+        em        = data.get("expected_move", {})
+        gex       = data.get("gex", {})
+        pcr       = data.get("pcr", {})
+        ivr       = data.get("iv_rank", {})
+        unusual   = data.get("unusual_volume", [])
+        ms        = data.get("model_signal", {})
+        pred      = data.get("prediction", {})
+        flow_bias = data.get("flow_bias", "Neutral")
 
-        # ── Row 1: Price range chart ──────────────────────────────────────────
-        # Shows: current price, expected move range, GEX walls
+        # ── Row 1: Price range ────────────────────────────────────────────────
         call_wall = gex.get("call_wall")
         put_wall  = gex.get("put_wall")
         upper     = em.get("upper_target", spot)
         lower     = em.get("lower_target", spot)
-        em_pct    = em.get("expected_move_pct", 0)
 
-        # Price levels to plot
-        levels       = []
-        level_labels = []
-        level_colors = []
-
+        levels, level_labels, level_colors = [], [], []
         if call_wall:
-            levels.append(call_wall)
-            level_labels.append(f"Call wall ${call_wall}")
-            level_colors.append(RED)
+            levels.append(call_wall); level_labels.append(f"Call wall ${call_wall}"); level_colors.append(RED)
         if upper:
-            levels.append(upper)
-            level_labels.append(f"EM upper ${upper}")
-            level_colors.append(BLUE)
+            levels.append(upper);     level_labels.append(f"EM upper ${upper}");      level_colors.append(BLUE)
         if spot:
-            levels.append(spot)
-            level_labels.append(f"Spot ${spot}")
-            level_colors.append(TEXT)
+            levels.append(spot);      level_labels.append(f"Spot ${spot}");           level_colors.append(TEXT)
         if lower:
-            levels.append(lower)
-            level_labels.append(f"EM lower ${lower}")
-            level_colors.append(BLUE)
+            levels.append(lower);     level_labels.append(f"EM lower ${lower}");      level_colors.append(BLUE)
         if put_wall:
-            levels.append(put_wall)
-            level_labels.append(f"Put wall ${put_wall}")
-            level_colors.append(GREEN)
+            levels.append(put_wall);  level_labels.append(f"Put wall ${put_wall}");   level_colors.append(GREEN)
 
         fig.add_trace(go.Bar(
-            x=level_labels,
-            y=levels,
+            x=level_labels, y=levels,
             marker_color=level_colors,
             text=[f"${v}" for v in levels],
             textposition="outside",
@@ -627,16 +582,9 @@ def build_dashboard(results: dict) -> go.Figure:
             hovertemplate="%{x}: $%{y}<extra></extra>",
         ), row=1, col=col_idx)
 
-        # Spot price reference line
         if spot:
-            fig.add_hline(
-                y=spot,
-                line_dash="dash",
-                line_color=TEXT,
-                line_width=1,
-                opacity=0.5,
-                row=1, col=col_idx,
-            )
+            fig.add_hline(y=spot, line_dash="dash", line_color=TEXT,
+                          line_width=1, opacity=0.5, row=1, col=col_idx)
 
         # ── Row 2: PCR bar ────────────────────────────────────────────────────
         pcr_val   = pcr.get("pcr_volume", 0)
@@ -645,8 +593,7 @@ def build_dashboard(results: dict) -> go.Figure:
         put_vol   = pcr.get("put_volume", 0)
 
         fig.add_trace(go.Bar(
-            x=["Calls", "Puts"],
-            y=[call_vol, put_vol],
+            x=["Calls", "Puts"], y=[call_vol, put_vol],
             marker_color=[GREEN, RED],
             text=[f"{call_vol:,}", f"{put_vol:,}"],
             textposition="outside",
@@ -655,26 +602,26 @@ def build_dashboard(results: dict) -> go.Figure:
             hovertemplate="%{x}: %{y:,}<extra></extra>",
         ), row=2, col=col_idx)
 
-        # PCR annotation - row 2 axes are numbered n - 1 ... n + n
-        xref=f"x{col_idx + n}" if (n + col_idx) > 1 else "x",
+        # BUG 2 FIX: properly assign xref_pcr without trailing comma,
+        # use xref= (not cref=) in add_annotation
+        xref_pcr = f"x{col_idx + n}" if (col_idx + n) > 1 else "x"
         fig.add_annotation(
             text=f"PCR {pcr_val:.3f} — {pcr.get('sentiment','N/A')}",
-            xref = xref_pcr,
+            xref=xref_pcr,
             yref="paper",
             x=0.5, y=0,
             showarrow=False,
             font=dict(size=9, color=pcr_color),
         )
 
-        # ── Row 3: IV Rank indicator ──────────────────────────────────────────
+        # ── Row 3: IV Rank ────────────────────────────────────────────────────
         iv_val   = ivr.get("iv_rank", 50) or 50
         iv_label = ivr.get("iv_label", "N/A")
         iv_color = make_color(iv_val, low_good=True)
         cur_iv   = ivr.get("current_iv", 0) or 0
 
         fig.add_trace(go.Bar(
-            x=["IV Rank"],
-            y=[iv_val],
+            x=["IV Rank"], y=[iv_val],
             marker_color=[iv_color],
             text=[f"IVR {iv_val:.1f} — {iv_label[:18]}<br>IV={cur_iv:.3f}"],
             textposition="outside",
@@ -682,81 +629,67 @@ def build_dashboard(results: dict) -> go.Figure:
             showlegend=False,
         ), row=3, col=col_idx)
 
-        # Reference lines for cheap/expensive thresholds
-        fig.add_hline(y=30,  line_dash="dash", line_color=GREEN,
-                      line_width=1, opacity=0.5,
-                      annotation_text="Cheap", annotation_font_size=8,
-                      annotation_font_color=GREEN, row=3, col=col_idx)
-        fig.add_hline(y=70,  line_dash="dash", line_color=RED,
-                      line_width=1, opacity=0.5,
-                      annotation_text="Expensive", annotation_font_size=8,
-                      annotation_font_color=RED, row=3, col=col_idx)
+        fig.add_hline(y=30, line_dash="dash", line_color=GREEN, line_width=1,
+                      opacity=0.5, annotation_text="Cheap",
+                      annotation_font_size=8, annotation_font_color=GREEN,
+                      row=3, col=col_idx)
+        fig.add_hline(y=70, line_dash="dash", line_color=RED, line_width=1,
+                      opacity=0.5, annotation_text="Expensive",
+                      annotation_font_size=8, annotation_font_color=RED,
+                      row=3, col=col_idx)
 
         # ── Row 4: Unusual volume ─────────────────────────────────────────────
         if unusual:
-            top3        = unusual[:3]
-            u_labels    = [f"{u['type']} ${u['strike']}" for u in top3]
-            u_ratios    = [u["vol_oi_ratio"] for u in top3]
-            u_colors    = [RED if u["type"] == "PUT" else GREEN for u in top3]
-            u_hover     = [
+            top3     = unusual[:3]
+            u_labels = [f"{u['type']} ${u['strike']}" for u in top3]
+            u_ratios = [u["vol_oi_ratio"] for u in top3]
+            u_colors = [RED if u["type"] == "PUT" else GREEN for u in top3]
+            u_hover  = [
                 f"{u['type']} ${u['strike']}<br>"
                 f"Vol: {u['volume']:,} / OI: {u['open_interest']:,}<br>"
                 f"Ratio: {u['vol_oi_ratio']}x  IV: {u['iv']}"
                 for u in top3
             ]
-
             fig.add_trace(go.Bar(
-                x=u_labels,
-                y=u_ratios,
+                x=u_labels, y=u_ratios,
                 marker_color=u_colors,
                 text=[f"{r}x" for r in u_ratios],
                 textposition="outside",
                 textfont=dict(color=TEXT, size=9),
                 showlegend=False,
-                hovertext=u_hover,
-                hoverinfo="text",
+                hovertext=u_hover, hoverinfo="text",
             ), row=4, col=col_idx)
-
-            fig.add_hline(
-                y=2.0,
-                line_dash="dash",
-                line_color=ORANGE,
-                line_width=1,
-                opacity=0.5,
-                row=4, col=col_idx,
-            )
+            fig.add_hline(y=2.0, line_dash="dash", line_color=ORANGE,
+                          line_width=1, opacity=0.5, row=4, col=col_idx)
         else:
             fig.add_trace(go.Bar(
-                x=["No unusual volume"],
-                y=[0],
-                marker_color=[SUBTEXT],
-                showlegend=False,
+                x=["No unusual volume"], y=[0],
+                marker_color=[SUBTEXT], showlegend=False,
             ), row=4, col=col_idx)
 
-        # ── Row 5: Model vs flow prediction ───────────────────────────────────
+        # ── Row 5: Model vs flow ──────────────────────────────────────────────
         if pred.get("status") != "insufficient_data" and "error" not in ms:
-            model_prob  = ms.get("prob_up", 0.5)
-            flow_score  = data.get("flow_score", 0)
-            agree       = pred.get("agreement", False)
-            conviction  = pred.get("conviction", "N/A")
-            model_dir   = pred.get("model_direction", "?")
-            flow_dir    = pred.get("flow_direction", "?")
-            price_tgt   = pred.get("price_target")
-            horizon     = ms.get("horizon", "?")
+            model_prob = ms.get("prob_up", 0.5)
+            flow_score = data.get("flow_score", 0)
+            agree      = pred.get("agreement", False)
+            conviction = pred.get("conviction", "N/A")
+            model_dir  = pred.get("model_direction", "?")
+            flow_dir   = pred.get("flow_direction", "?")
+            price_tgt  = pred.get("price_target")
+            horizon    = ms.get("horizon", "?")
 
             bar_colors = [
                 GREEN if model_prob >= 0.5 else RED,
                 GREEN if flow_score > 0 else RED if flow_score < 0 else ORANGE,
             ]
-            bar_vals  = [model_prob, min(max((flow_score + 3) / 6, 0), 1)]
-            bar_text  = [
+            bar_vals = [model_prob, min(max((flow_score + 3) / 6, 0), 1)]
+            bar_text = [
                 f"{model_prob:.1%} {model_dir} ({horizon})",
                 f"{flow_dir} score={flow_score}",
             ]
 
             fig.add_trace(go.Bar(
-                x=["Model", "Flow"],
-                y=bar_vals,
+                x=["Model", "Flow"], y=bar_vals,
                 marker_color=bar_colors,
                 text=bar_text,
                 textposition="outside",
@@ -764,16 +697,9 @@ def build_dashboard(results: dict) -> go.Figure:
                 showlegend=False,
             ), row=5, col=col_idx)
 
-            fig.add_hline(
-                y=0.5,
-                line_dash="dash",
-                line_color=SUBTEXT,
-                line_width=1,
-                opacity=0.4,
-                row=5, col=col_idx,
-            )
+            fig.add_hline(y=0.5, line_dash="dash", line_color=SUBTEXT,
+                          line_width=1, opacity=0.4, row=5, col=col_idx)
 
-            # Agreement annotation
             agree_color = GREEN if agree else RED
             agree_str   = "✓ AGREE" if agree else "✗ SPLIT"
             tgt_str     = f" → ${price_tgt}" if price_tgt else ""
@@ -788,10 +714,8 @@ def build_dashboard(results: dict) -> go.Figure:
             )
         else:
             fig.add_trace(go.Bar(
-                x=["No prediction"],
-                y=[0],
-                marker_color=[SUBTEXT],
-                showlegend=False,
+                x=["No prediction"], y=[0],
+                marker_color=[SUBTEXT], showlegend=False,
             ), row=5, col=col_idx)
 
     # ── Global layout ─────────────────────────────────────────────────────────
@@ -809,24 +733,13 @@ def build_dashboard(results: dict) -> go.Figure:
         margin=dict(t=80, b=60, l=40, r=40),
     )
 
-    # Style all axes
     for i in range(1, 6):
         for j in range(1, n + 1):
-            fig.update_xaxes(
-                showgrid=False,
-                zeroline=False,
-                tickfont=dict(color=SUBTEXT, size=8),
-                row=i, col=j,
-            )
-            fig.update_yaxes(
-                showgrid=True,
-                gridcolor=GRID,
-                zeroline=False,
-                tickfont=dict(color=SUBTEXT, size=8),
-                row=i, col=j,
-            )
+            fig.update_xaxes(showgrid=False, zeroline=False,
+                             tickfont=dict(color=SUBTEXT, size=8), row=i, col=j)
+            fig.update_yaxes(showgrid=True, gridcolor=GRID, zeroline=False,
+                             tickfont=dict(color=SUBTEXT, size=8), row=i, col=j)
 
-    # Row labels on leftmost column
     row_titles = [
         "Price Levels & Expected Move",
         "Call vs Put Volume",
@@ -864,9 +777,9 @@ def open_dashboard(tickers: list = None, results: dict = None):
     """Generates options flow dashboard and opens it in the default browser."""
     import webbrowser
     out = generate_options_dashboard(tickers, results=results)
-    abs_path = os.path.abspath
+    # BUG 3 FIX: was `abs_path = os.path.abspath` (function never called)
+    abs_path = os.path.abspath(out)
     try:
-        abs_path = os.path.abspath(out)
         webbrowser.open(f"file://{abs_path}")
         print(f"Opening in browser: {abs_path}")
     except Exception as e:

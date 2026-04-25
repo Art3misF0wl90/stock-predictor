@@ -48,9 +48,11 @@ def get_signal_accuracy(ticker: str = None) -> pd.DataFrame:
         FROM outcomes
     """
     if ticker:
-        query += f" WHERE ticker = '{ticker}'"
-    query += " GROUP BY ticker ORDER BY win_rate DESC"
-    df = pd.read_sql(query, conn)
+        query += " WHERE ticker = ?"
+        df = pd.read_sql(query, conn, params=(ticker,))
+    else:
+        query += " GROUP BY ticker ORDER BY win_rate DESC"
+        df = pd.read_sql(query, conn)
     conn.close()
     return df
 

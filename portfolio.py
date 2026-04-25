@@ -145,37 +145,35 @@ def buy_shares(ticker: str, shares: float, price: float,
                deduct_cash: bool = True) -> dict:
     ticker = ticker.upper()
     cost = shares * price
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
- 
-    c.execute("SELECT shares, avg_cost FROM holdings WHERE ticker = ?", (ticker,))
-    row = c.fetchone()
-    if row:
-        old_shares, old_cost = float(row[0]), float(row[1])
-        new_shares = old_shares + shares
-        new_avg = (old_shares * old_cost + cost) / new_shares
-    else:
-        new_shares = shares
-        new_avg = price
- 
-    c.execute("""
-        INSERT INTO holdings (ticker, shares, avg_cost, notes, added_at)
-        VALUES (?, ?, ?, '', ?)
-        ON CONFLICT(ticker) DO UPDATE SET
-            shares   = excluded.shares,
-            avg_cost = excluded.avg_cost
-    """, (ticker, new_shares, new_avg, str(datetime.now())))
- 
-    c.execute("""INSERT INTO transactions (ticker, action, shares, price, amount, note, ts)
-                 VALUES (?, 'BUY', ?, ?, ?, ?, ?)""",
-              (ticker, shares, price, cost, f"Bought {shares} @ ${price:.2f}", str(datetime.now())))
- 
-    conn.commit()
-    conn.close()
- 
-    if deduct_cash:
-        adjust_cash(-cost, f"Buy {shares} {ticker} @ ${price:.2f}")
- 
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+
+        c.execute("SELECT shares, avg_cost FROM holdings WHERE ticker = ?", (ticker,))
+        row = c.fetchone()
+        if row:
+            old_shares, old_cost = float(row[0]), float(row[1])
+            new_shares = old_shares + shares
+            new_avg = (old_shares * old_cost + cost) / new_shares
+        else:
+            new_shares = shares
+            new_avg = price
+
+        c.execute("""
+            INSERT INTO holdings (ticker, shares, avg_cost, notes, added_at)
+            VALUES (?, ?, ?, '', ?)
+            ON CONFLICT(ticker) DO UPDATE SET
+                shares   = excluded.shares,
+                avg_cost = excluded.avg_cost
+        """, (ticker, new_shares, new_avg, str(datetime.now())))
+
+        c.execute("""INSERT INTO transactions (ticker, action, shares, price, amount, note, ts)
+                     VALUES (?, 'BUY', ?, ?, ?, ?, ?)""",
+                  (ticker, shares, price, cost, f"Bought {shares} @ ${price:.2f}", str(datetime.now())))
+
+        conn.commit()
+    finally:
+        conn.close()
     return {"ticker": ticker, "shares_bought": shares, "new_total": new_shares,
             "new_avg_cost": round(new_avg, 4), "total_cost": round(cost, 2)}
  
@@ -183,40 +181,40 @@ def buy_shares(ticker: str, shares: float, price: float,
 def sell_shares(ticker: str, shares: float, price: float,
                 add_to_cash: bool = True) -> dict:
     ticker = ticker.upper()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
- 
-    c.execute("SELECT shares, avg_cost FROM holdings WHERE ticker = ?", (ticker,))
-    row = c.fetchone()
-    if not row:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+
+        c.execute("SELECT shares, avg_cost FROM holdings WHERE ticker = ?", (ticker,))
+        row = c.fetchone()
+        if not row:
+            return {"error": f"No position in {ticker}"}
+
+        old_shares, avg_cost = float(row[0]), float(row[1])
+        if shares > old_shares:
+            return {"error": f"Only {old_shares} shares held, cannot sell {shares}"}
+
+        proceeds = shares * price
+        realized_pnl = (price - avg_cost) * shares
+        new_shares = old_shares - shares
+
+        if new_shares < 1e-6:
+            c.execute("DELETE FROM holdings WHERE ticker = ?", (ticker,))
+        else:
+            c.execute("UPDATE holdings SET shares = ? WHERE ticker = ?",
+                      (new_shares, ticker))
+
+        c.execute("""INSERT INTO transactions (ticker, action, shares, price, amount, note, ts)
+                     VALUES (?, 'SELL', ?, ?, ?, ?, ?)""",
+                  (ticker, shares, price, proceeds,
+                   f"Sold {shares} @ ${price:.2f}, PnL ${realized_pnl:+.2f}", str(datetime.now())))
+        conn.commit()
+    finally:
         conn.close()
-        return {"error": f"No position in {ticker}"}
- 
-    old_shares, avg_cost = float(row[0]), float(row[1])
-    if shares > old_shares:
-        conn.close()
-        return {"error": f"Only {old_shares} shares held, cannot sell {shares}"}
- 
-    proceeds = shares * price
-    realized_pnl = (price - avg_cost) * shares
-    new_shares = old_shares - shares
- 
-    if new_shares < 1e-6:
-        c.execute("DELETE FROM holdings WHERE ticker = ?", (ticker,))
-    else:
-        c.execute("UPDATE holdings SET shares = ? WHERE ticker = ?",
-                  (new_shares, ticker))
- 
-    c.execute("""INSERT INTO transactions (ticker, action, shares, price, amount, note, ts)
-                 VALUES (?, 'SELL', ?, ?, ?, ?, ?)""",
-              (ticker, shares, price, proceeds,
-               f"Sold {shares} @ ${price:.2f}, PnL ${realized_pnl:+.2f}", str(datetime.now())))
-    conn.commit()
-    conn.close()
- 
+
     if add_to_cash:
         adjust_cash(proceeds, f"Sell {shares} {ticker} @ ${price:.2f}")
- 
+
     return {"ticker": ticker, "shares_sold": shares, "shares_remaining": new_shares,
             "proceeds": round(proceeds, 2), "realized_pnl": round(realized_pnl, 2)}
  

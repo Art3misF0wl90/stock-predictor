@@ -1,53 +1,22 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Portfolio Tracker — Stock Predictor</title>
+{% extends "base.html" %}
+{% set active_page = 'portfolio' %}
+{% block title %}Portfolio{% endblock %}
+
+{% block extra_css %}
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
-
-  :root {
-    --bg:      #0f1117;
-    --panel:   #1a1d2e;
-    --border:  #2d3748;
-    --text:    #e2e8f0;
-    --subtext: #718096;
-    --green:   #1D9E75;
-    --red:     #E24B4A;
-    --blue:    #378ADD;
-    --orange:  #EF9F27;
-    --purple:  #9F7AEA;
-    --mono:    'IBM Plex Mono', monospace;
-    --sans:    'IBM Plex Sans', sans-serif;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
-
-  /* ── Nav ── */
-  nav {
-    display: flex; align-items: center; gap: 24px;
-    padding: 14px 28px; border-bottom: 1px solid var(--border);
-    background: var(--panel); position: sticky; top: 0; z-index: 100;
-  }
-  nav .brand { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--blue); letter-spacing: 0.08em; text-decoration: none; }
-  nav a { color: var(--subtext); text-decoration: none; font-size: 13px; transition: color .15s; }
-  nav a:hover, nav a.active { color: var(--text); }
-  nav .spacer { flex: 1; }
-  #nav-clock { font-family: var(--mono); font-size: 11px; color: var(--subtext); }
+  body { min-height: 100vh; }
 
   /* ── Layout ── */
   .page { padding: 28px; max-width: 1400px; margin: 0 auto; }
   .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-  .page-title { font-family: var(--mono); font-size: 18px; font-weight: 600; letter-spacing: 0.04em; }
+  .page-title    { font-family: var(--mono); font-size: 18px; font-weight: 600; letter-spacing: 0.04em; }
   .page-subtitle { font-size: 12px; color: var(--subtext); margin-top: 4px; font-family: var(--mono); }
 
   /* ── KPI strip ── */
   .kpi-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 24px; }
   @media (max-width: 1100px) { .kpi-strip { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 700px)  { .kpi-strip { grid-template-columns: repeat(2, 1fr); } }
-  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .kpi       { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
   .kpi-label { font-family: var(--mono); font-size: 10px; color: var(--subtext); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
   .kpi-value { font-family: var(--mono); font-size: 20px; font-weight: 600; }
   .kpi-sub   { font-size: 11px; color: var(--subtext); margin-top: 4px; font-family: var(--mono); }
@@ -60,39 +29,49 @@
   .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
   @media (max-width: 1000px) { .main-grid { grid-template-columns: 1fr; } }
 
-  /* ── Panel ── */
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
-  .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
-  .panel-title { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--subtext); }
-  .panel-body { padding: 18px; }
-
-  /* ── Table ── */
-  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
-  thead th { text-align: left; padding: 8px 10px; color: var(--subtext); font-weight: 500; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
-  tbody tr { border-bottom: 1px solid rgba(45,55,72,0.5); transition: background .12s; }
-  tbody tr:hover { background: rgba(255,255,255,0.03); }
-  tbody tr:last-child { border-bottom: none; }
-  td { padding: 10px; vertical-align: middle; }
-  td.right  { text-align: right; }
-  td.center { text-align: center; }
-
+  /* ── Table extras ── */
   .ticker-badge { display: inline-block; background: rgba(55,138,221,0.12); color: var(--blue); border: 1px solid rgba(55,138,221,0.25); border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; }
-
-  .btn-icon { background: none; border: 1px solid var(--border); color: var(--subtext); border-radius: 4px; padding: 3px 7px; cursor: pointer; font-size: 11px; transition: all .15s; }
+  .btn-icon      { background: none; border: 1px solid var(--border); color: var(--subtext); border-radius: 4px; padding: 3px 7px; cursor: pointer; font-size: 11px; transition: all .15s; }
   .btn-icon:hover     { border-color: var(--red);   color: var(--red); }
   .btn-icon.buy:hover { border-color: var(--green); color: var(--green); }
 
-  /* ── Buttons ── */
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: opacity .15s, transform .1s; }
-  .btn:hover  { opacity: .85; }
-  .btn:active { transform: scale(.97); }
-  .btn-primary { background: var(--blue);   color: #fff; }
-  .btn-success { background: var(--green);  color: #fff; }
-  .btn-danger  { background: var(--red);    color: #fff; }
-  .btn-warning { background: var(--orange); color: #fff; }
-  .btn-ghost   { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  /* ── Tabs ── */
+  .tabs        { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 0 18px; }
+  .tab         { padding: 10px 14px; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--subtext); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; letter-spacing: 0.04em; }
+  .tab.active  { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab-content { display: none; padding: 18px; }
+  .tab-content.active { display: block; }
 
-  /* ── Form ── */
+  /* ── Advice cards ── */
+  .advice-card        { border-radius: 7px; padding: 13px 15px; margin-bottom: 10px; border-left: 3px solid; font-size: 13px; line-height: 1.5; }
+  .advice-card.high   { background: rgba(226,75,74,0.08);  border-color: var(--red); }
+  .advice-card.medium { background: rgba(239,159,39,0.08); border-color: var(--orange); }
+  .advice-card.low    { background: rgba(29,158,117,0.08); border-color: var(--green); }
+  .advice-card.info   { background: rgba(55,138,221,0.08); border-color: var(--blue); }
+  .advice-ticker      { font-family: var(--mono); font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+  .advice-action      { display: inline-block; font-size: 10px; font-family: var(--mono); padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.08); color: var(--subtext); margin-top: 6px; letter-spacing: 0.04em; }
+
+  /* ── Cash widget ── */
+  .cash-display  { text-align: center; padding: 20px; }
+  .cash-amount   { font-family: var(--mono); font-size: 32px; font-weight: 600; color: var(--green); margin-bottom: 6px; }
+  .cash-label    { font-size: 11px; color: var(--subtext); letter-spacing: 0.06em; text-transform: uppercase; font-family: var(--mono); }
+  .cash-actions  { display: flex; gap: 8px; margin-top: 16px; justify-content: center; }
+
+  /* ── Transaction log ── */
+  .tx-row          { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(45,55,72,0.4); font-size: 12px; font-family: var(--mono); }
+  .tx-row:last-child { border-bottom: none; }
+  .tx-action         { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.04em; }
+  .tx-BUY            { background: rgba(29,158,117,0.15);  color: var(--green); }
+  .tx-SELL           { background: rgba(226,75,74,0.15);   color: var(--red); }
+  .tx-CASH_DEPOSIT   { background: rgba(55,138,221,0.15);  color: var(--blue); }
+  .tx-CASH_WITHDRAW  { background: rgba(239,159,39,0.15);  color: var(--orange); }
+  .tx-CASH_SET       { background: rgba(159,122,234,0.15); color: var(--purple); }
+  .tx-SET_POSITION   { background: rgba(113,128,150,0.15); color: var(--subtext); }
+  .tx-REMOVE         { background: rgba(226,75,74,0.10);   color: var(--red); }
+  .tx-meta   { color: var(--subtext); font-size: 10px; }
+  .tx-amount { text-align: right; }
+
+  /* ── Forms ── */
   .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
   .input-row.thirds { grid-template-columns: 1fr 1fr 1fr; }
   label { display: block; font-size: 10px; color: var(--subtext); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; font-family: var(--mono); }
@@ -101,80 +80,25 @@
   input::placeholder { color: var(--subtext); }
   .form-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
 
-  /* ── Tabs ── */
-  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 0 18px; }
-  .tab { padding: 10px 14px; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--subtext); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; letter-spacing: 0.04em; }
-  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
-  .tab-content { display: none; padding: 18px; }
-  .tab-content.active { display: block; }
-
-  /* ── Advice cards ── */
-  .advice-card { border-radius: 7px; padding: 13px 15px; margin-bottom: 10px; border-left: 3px solid; font-size: 13px; line-height: 1.5; }
-  .advice-card.high   { background: rgba(226,75,74,0.08);  border-color: var(--red); }
-  .advice-card.medium { background: rgba(239,159,39,0.08); border-color: var(--orange); }
-  .advice-card.low    { background: rgba(29,158,117,0.08); border-color: var(--green); }
-  .advice-card.info   { background: rgba(55,138,221,0.08); border-color: var(--blue); }
-  .advice-ticker { font-family: var(--mono); font-weight: 600; font-size: 12px; margin-bottom: 4px; }
-  .advice-action { display: inline-block; font-size: 10px; font-family: var(--mono); padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.08); color: var(--subtext); margin-top: 6px; letter-spacing: 0.04em; }
-
-  /* ── Cash widget ── */
-  .cash-display { text-align: center; padding: 20px; }
-  .cash-amount { font-family: var(--mono); font-size: 32px; font-weight: 600; color: var(--green); margin-bottom: 6px; }
-  .cash-label  { font-size: 11px; color: var(--subtext); letter-spacing: 0.06em; text-transform: uppercase; font-family: var(--mono); }
-  .cash-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: center; }
-
-  /* ── Transaction list ── */
-  .tx-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(45,55,72,0.4); font-size: 12px; font-family: var(--mono); }
-  .tx-row:last-child { border-bottom: none; }
-  .tx-action { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.04em; }
-  .tx-BUY           { background: rgba(29,158,117,0.15);  color: var(--green); }
-  .tx-SELL          { background: rgba(226,75,74,0.15);   color: var(--red); }
-  .tx-CASH_DEPOSIT  { background: rgba(55,138,221,0.15);  color: var(--blue); }
-  .tx-CASH_WITHDRAW { background: rgba(239,159,39,0.15);  color: var(--orange); }
-  .tx-CASH_SET      { background: rgba(159,122,234,0.15); color: var(--purple); }
-  .tx-SET_POSITION  { background: rgba(113,128,150,0.15); color: var(--subtext); }
-  .tx-REMOVE        { background: rgba(226,75,74,0.10);   color: var(--red); }
-  .tx-meta   { color: var(--subtext); font-size: 10px; }
-  .tx-amount { text-align: right; }
-
-  /* ── Empty ── */
-  .empty { text-align: center; padding: 40px 20px; color: var(--subtext); font-size: 13px; }
-  .empty-icon { font-size: 28px; margin-bottom: 10px; }
-
   /* ── Modal ── */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay      { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 200; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 95vw; }
-  .modal-title { font-family: var(--mono); font-size: 14px; font-weight: 600; margin-bottom: 20px; }
+  .modal              { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 420px; max-width: 95vw; }
+  .modal-title        { font-family: var(--mono); font-size: 14px; font-weight: 600; margin-bottom: 20px; }
 
   /* ── Misc ── */
-  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .tag { display: inline-block; font-size: 10px; font-family: var(--mono); padding: 2px 6px; border-radius: 3px; letter-spacing: 0.04em; }
   .refresh-btn { background: none; border: 1px solid var(--border); color: var(--subtext); border-radius: 6px; padding: 6px 12px; font-family: var(--mono); font-size: 11px; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px; }
   .refresh-btn:hover { border-color: var(--blue); color: var(--blue); }
   .pnl-bar  { height: 3px; border-radius: 2px; margin-top: 4px; background: var(--border); overflow: hidden; }
   .pnl-fill { height: 100%; border-radius: 2px; transition: width .4s; }
+  .tag { display: inline-block; font-size: 10px; font-family: var(--mono); padding: 2px 6px; border-radius: 3px; letter-spacing: 0.04em; }
+
   #toast { position: fixed; bottom: 24px; right: 24px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 13px; font-family: var(--mono); z-index: 9999; opacity: 0; transform: translateY(10px); transition: all .25s; pointer-events: none; max-width: 320px; }
   #toast.show { opacity: 1; transform: translateY(0); }
-
-  ::-webkit-scrollbar { width: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 </style>
-</head>
-<body>
+{% endblock %}
 
-<!-- Nav -->
-<nav>
-  <a class="brand" href="/">◈ STOCK PRED</a>
-  <a href="/">Dashboard</a>
-  <a href="/portfolio" class="active">Portfolio</a>
-  <a href="/options-flow">Options Flow</a>
-  <div class="spacer"></div>
-  <div id="nav-clock"></div>
-</nav>
-
+{% block content %}
 <div class="page">
   <div class="page-header">
     <div>
@@ -182,12 +106,9 @@
       <div class="page-subtitle" id="last-updated">Loading...</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
-      <button class="refresh-btn" onclick="loadAll()">
-        <span id="refresh-spinner" style="display:none" class="spinner"></span>
-        ↻ Refresh
-      </button>
+      <button class="refresh-btn" onclick="loadAll()"><span id="refresh-spinner" style="display:none" class="spinner"></span>↻ Refresh</button>
       <button class="btn btn-success" onclick="openModal('add-holding')">+ Add Position</button>
-      <button class="btn btn-ghost" onclick="openModal('trade')">⟳ Trade</button>
+      <button class="btn btn-ghost"   onclick="openModal('trade')">⟳ Trade</button>
     </div>
   </div>
 
@@ -219,8 +140,8 @@
           <div class="tab" onclick="switchTab('advice')">💡 Advice <span id="adv-count" class="tag" style="background:rgba(55,138,221,0.15);color:var(--blue);"></span></div>
           <div class="tab" onclick="switchTab('opportunities')">🎯 Opportunities <span id="opp-count" class="tag" style="background:rgba(29,158,117,0.15);color:var(--green);"></span></div>
         </div>
-        <div id="tab-warnings" class="tab-content active"><div class="empty"><div class="spinner"></div></div></div>
-        <div id="tab-advice" class="tab-content"><div class="empty"><div class="spinner"></div></div></div>
+        <div id="tab-warnings"      class="tab-content active"><div class="empty"><div class="spinner"></div></div></div>
+        <div id="tab-advice"        class="tab-content"><div class="empty"><div class="spinner"></div></div></div>
         <div id="tab-opportunities" class="tab-content"><div class="empty"><div class="spinner"></div></div></div>
       </div>
     </div>
@@ -231,7 +152,7 @@
           <div class="cash-label">Available Balance</div>
           <div class="cash-amount" id="cash-display">$0.00</div>
           <div class="cash-actions">
-            <button class="btn btn-success" onclick="openModal('deposit')" style="font-size:11px;padding:6px 12px;">↑ Deposit</button>
+            <button class="btn btn-success" onclick="openModal('deposit')"  style="font-size:11px;padding:6px 12px;">↑ Deposit</button>
             <button class="btn btn-danger"  onclick="openModal('withdraw')" style="font-size:11px;padding:6px 12px;">↓ Withdraw</button>
             <button class="btn btn-ghost"   onclick="openModal('set-cash')" style="font-size:11px;padding:6px 12px;">= Set</button>
           </div>
@@ -258,145 +179,145 @@
 <div class="modal-overlay" id="modal-add-holding"><div class="modal">
   <div class="modal-title">Add / Update Position</div>
   <div class="input-row"><div><label>Ticker</label><input id="h-ticker" placeholder="AAPL" style="text-transform:uppercase"/></div><div><label>Shares</label><input id="h-shares" type="number" placeholder="10" min="0" step="any"/></div></div>
-  <div class="input-row"><div><label>Avg Cost ($)</label><input id="h-cost" type="number" placeholder="150.00" min="0" step="any"/></div><div><label>Notes (optional)</label><input id="h-notes" placeholder="Long term hold"/></div></div>
+  <div class="input-row"><div><label>Avg Cost ($)</label><input id="h-cost" type="number" placeholder="150.00" min="0" step="any"/></div><div><label>Notes</label><input id="h-notes" placeholder="Long term hold"/></div></div>
   <div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('add-holding')">Cancel</button><button class="btn btn-success" onclick="submitAddHolding()">Save Position</button></div>
 </div></div>
 
 <div class="modal-overlay" id="modal-trade"><div class="modal">
   <div class="modal-title">Execute Trade</div>
   <div class="input-row thirds"><div><label>Action</label><select id="t-action"><option value="buy">BUY</option><option value="sell">SELL</option></select></div><div><label>Ticker</label><input id="t-ticker" placeholder="AAPL" style="text-transform:uppercase"/></div><div><label>Shares</label><input id="t-shares" type="number" placeholder="5" min="0" step="any"/></div></div>
-  <div class="input-row"><div><label>Price ($)</label><input id="t-price" type="number" placeholder="150.00" min="0" step="any"/></div><div><label>Adjust Cash?</label><select id="t-cash"><option value="true">Yes — update balance</option><option value="false">No — manual tracking</option></select></div></div>
+  <div class="input-row"><div><label>Price ($)</label><input id="t-price" type="number" placeholder="150.00" min="0" step="any"/></div><div><label>Adjust Cash?</label><select id="t-cash"><option value="true">Yes</option><option value="false">No</option></select></div></div>
   <div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('trade')">Cancel</button><button class="btn btn-primary" onclick="submitTrade()">Execute</button></div>
 </div></div>
 
 <div class="modal-overlay" id="modal-deposit"><div class="modal">
   <div class="modal-title">Deposit Cash</div>
   <label>Amount ($)</label><input id="dep-amount" type="number" placeholder="1000.00" min="0" step="any"/>
-  <label style="margin-top:12px">Note (optional)</label><input id="dep-note" placeholder="Monthly contribution"/>
+  <label style="margin-top:12px">Note</label><input id="dep-note" placeholder="Monthly contribution"/>
   <div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('deposit')">Cancel</button><button class="btn btn-success" onclick="submitCashAdjust(1)">Deposit</button></div>
 </div></div>
 
 <div class="modal-overlay" id="modal-withdraw"><div class="modal">
   <div class="modal-title">Withdraw Cash</div>
   <label>Amount ($)</label><input id="with-amount" type="number" placeholder="500.00" min="0" step="any"/>
-  <label style="margin-top:12px">Note (optional)</label><input id="with-note" placeholder="Withdrawal"/>
+  <label style="margin-top:12px">Note</label><input id="with-note" placeholder="Withdrawal"/>
   <div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('withdraw')">Cancel</button><button class="btn btn-danger" onclick="submitCashAdjust(-1)">Withdraw</button></div>
 </div></div>
 
 <div class="modal-overlay" id="modal-set-cash"><div class="modal">
   <div class="modal-title">Set Cash Balance</div>
   <label>New Balance ($)</label><input id="set-amount" type="number" placeholder="5000.00" min="0" step="any"/>
-  <label style="margin-top:12px">Note (optional)</label><input id="set-note" placeholder="Initial balance"/>
+  <label style="margin-top:12px">Note</label><input id="set-note" placeholder="Initial balance"/>
   <div class="form-actions"><button class="btn btn-ghost" onclick="closeModal('set-cash')">Cancel</button><button class="btn btn-warning" onclick="submitSetCash()">Set Balance</button></div>
 </div></div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-let summaryData = null, activeTab = 'warnings';
+  let summaryData = null, activeTab = 'warnings';
 
-function updateClock() {
-  const now = new Date();
-  document.getElementById('nav-clock').textContent =
-    now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + '  ' +
-    now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-}
-setInterval(updateClock, 1000); updateClock();
+  function toast(msg, color='var(--blue)') {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.style.borderColor = color;
+    el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3000);
+  }
 
-function toast(msg, color='var(--blue)') {
-  const el = document.getElementById('toast');
-  el.textContent = msg; el.style.borderColor = color;
-  el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3000);
-}
+  function openModal(id)  { document.getElementById('modal-'+id).classList.add('open'); }
+  function closeModal(id) { document.getElementById('modal-'+id).classList.remove('open'); }
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target===el) el.classList.remove('open'); });
+  });
 
-function openModal(id)  { document.getElementById('modal-'+id).classList.add('open'); }
-function closeModal(id) { document.getElementById('modal-'+id).classList.remove('open'); }
-document.querySelectorAll('.modal-overlay').forEach(el => {
-  el.addEventListener('click', e => { if (e.target===el) el.classList.remove('open'); });
-});
+  function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['warnings','advice','opportunities'][i]===tab));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id==='tab-'+tab));
+  }
 
-function switchTab(tab) {
-  activeTab = tab;
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active',['warnings','advice','opportunities'][i]===tab));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id==='tab-'+tab));
-}
+  async function loadAll() {
+    document.getElementById('refresh-spinner').style.display = 'inline-block';
+    await Promise.all([loadSummary(), loadAdvice(), loadTransactions()]);
+    document.getElementById('refresh-spinner').style.display = 'none';
+    document.getElementById('last-updated').textContent = 'Last updated: '+new Date().toLocaleTimeString();
+  }
 
-const fmt    = v => v==null ? '—' : '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtN   = v => v==null ? '—' : Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const pct    = v => v==null ? '—' : (v>=0?'+':'')+Number(v).toFixed(2)+'%';
-const pnlCls = v => v==null ? '' : v>=0 ? 'pos' : 'neg';
-
-async function loadAll() {
-  document.getElementById('refresh-spinner').style.display = 'inline-block';
-  await Promise.all([loadSummary(), loadAdvice(), loadTransactions()]);
-  document.getElementById('refresh-spinner').style.display = 'none';
-  document.getElementById('last-updated').textContent = 'Last updated: '+new Date().toLocaleTimeString();
-}
-
-async function loadSummary() {
-  try {
-    const data = await (await fetch('/api/portfolio/summary')).json();
+  async function loadSummary() {
+    const data = await fetchJSON('/api/portfolio/summary');
+    if (!data) return;
     summaryData = data;
     renderKPIs(data); renderHoldings(data); renderAllocation(data);
     document.getElementById('cash-display').textContent = fmt(data.cash);
-  } catch(e) { console.error('Summary error:',e); }
-}
-
-function renderKPIs(d) {
-  document.getElementById('kpi-total').textContent        = fmt(d.total_value);
-  document.getElementById('kpi-mktval').textContent       = fmt(d.total_market_value);
-  document.getElementById('kpi-invested-sub').textContent = 'Invested: '+fmt(d.total_invested);
-  const pnlEl = document.getElementById('kpi-pnl');
-  pnlEl.textContent = fmt(d.total_pnl); pnlEl.className = 'kpi-value '+pnlCls(d.total_pnl);
-  document.getElementById('kpi-pnl-pct').textContent  = pct(d.total_pnl_pct);
-  document.getElementById('kpi-cash').textContent     = fmt(d.cash);
-  const cp = d.total_value>0 ? (d.cash/d.total_value*100).toFixed(1) : 0;
-  document.getElementById('kpi-cash-pct').textContent  = cp+'% of portfolio';
-  document.getElementById('kpi-positions').textContent = (d.holdings||[]).length;
-  document.getElementById('kpi-date').textContent      = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-}
-
-function renderHoldings(d) {
-  const container = document.getElementById('holdings-container');
-  const holdings  = d.holdings || [];
-  if (!holdings.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">📭</div>No positions yet.<br><button class="btn btn-success" onclick="openModal('add-holding')" style="margin-top:12px;font-size:12px;">+ Add First Position</button></div>`;
-    return;
   }
-  const rows = holdings.map(h => {
-    const bar = h.pnl_pct!=null ? `<div class="pnl-bar"><div class="pnl-fill" style="width:${Math.min(Math.abs(h.pnl_pct),100)}%;background:${h.pnl>=0?'var(--green)':'var(--red)'}"></div></div>` : '';
-    return `<tr>
-      <td><span class="ticker-badge">${h.ticker}</span></td>
-      <td class="right">${fmtN(h.shares)}</td>
-      <td class="right">${fmt(h.current_price)}</td>
-      <td class="right">${fmt(h.avg_cost)}</td>
-      <td class="right">${fmt(h.cost_basis)}</td>
-      <td class="right">${fmt(h.market_value)}</td>
-      <td class="right ${pnlCls(h.pnl)}">${fmt(h.pnl)}<br><small>${pct(h.pnl_pct)}</small>${bar}</td>
-      <td class="center">
-        <button class="btn-icon buy" onclick="quickTrade('buy','${h.ticker}')">▲</button>
-        <button class="btn-icon" onclick="quickTrade('sell','${h.ticker}')">▼</button>
-        <button class="btn-icon" onclick="removeHolding('${h.ticker}')">✕</button>
-      </td></tr>`;
-  }).join('');
-  container.innerHTML = `<table><thead><tr><th>Ticker</th><th class="right">Shares</th><th class="right">Price</th><th class="right">Avg Cost</th><th class="right">Cost Basis</th><th class="right">Market Val</th><th class="right">P&amp;L</th><th class="center">Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
-}
 
-function renderAllocation(d) {
-  const container = document.getElementById('allocation-container');
-  const holdings  = (d.holdings||[]).filter(h=>h.market_value);
-  const cash = d.cash||0, total = d.total_value||1;
-  if (!holdings.length && !cash) { container.innerHTML='<div class="empty" style="padding:10px">No data</div>'; return; }
-  const colors = ['var(--blue)','var(--green)','var(--orange)','var(--purple)','var(--red)','#38B2AC','#ED8936','#667EEA','#F56565','#48BB78'];
-  let html = holdings.map((h,i) => {
-    const w = ((h.market_value/total)*100).toFixed(1);
-    return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;margin-bottom:4px"><span style="color:${colors[i%colors.length]}">${h.ticker}</span><span style="color:var(--subtext)">${w}% · ${fmt(h.market_value)}</span></div><div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:${colors[i%colors.length]};border-radius:3px;transition:width .4s"></div></div></div>`;
-  }).join('');
-  if (cash>0) { const w=((cash/total)*100).toFixed(1); html+=`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;margin-bottom:4px"><span style="color:var(--subtext)">CASH</span><span style="color:var(--subtext)">${w}% · ${fmt(cash)}</span></div><div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:var(--subtext);border-radius:3px"></div></div></div>`; }
-  container.innerHTML = html;
-}
+  function renderKPIs(d) {
+    document.getElementById('kpi-total').textContent        = fmt(d.total_value);
+    document.getElementById('kpi-mktval').textContent       = fmt(d.total_market_value);
+    document.getElementById('kpi-invested-sub').textContent = 'Invested: '+fmt(d.total_invested);
+    const pnlEl = document.getElementById('kpi-pnl');
+    pnlEl.textContent = fmt(d.total_pnl); pnlEl.className = 'kpi-value '+pnlCls(d.total_pnl);
+    document.getElementById('kpi-pnl-pct').textContent  = pct(d.total_pnl_pct);
+    document.getElementById('kpi-cash').textContent     = fmt(d.cash);
+    const cp = d.total_value>0 ? (d.cash/d.total_value*100).toFixed(1) : 0;
+    document.getElementById('kpi-cash-pct').textContent  = cp+'% of portfolio';
+    document.getElementById('kpi-positions').textContent = (d.holdings||[]).length;
+    document.getElementById('kpi-date').textContent      = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  }
 
-async function loadAdvice() {
-  try {
-    const data = await (await fetch('/api/portfolio/advice')).json();
+  function renderHoldings(d) {
+    const container = document.getElementById('holdings-container');
+    const holdings  = d.holdings || [];
+    if (!holdings.length) {
+      container.innerHTML = `<div class="empty"><div style="font-size:28px;margin-bottom:10px">📭</div>No positions yet.<br><button class="btn btn-success" onclick="openModal('add-holding')" style="margin-top:12px;font-size:12px;">+ Add First Position</button></div>`;
+      return;
+    }
+    const rows = holdings.map(h => {
+      const bar = h.pnl_pct!=null ? `<div class="pnl-bar"><div class="pnl-fill" style="width:${Math.min(Math.abs(h.pnl_pct),100)}%;background:${h.pnl>=0?'var(--green)':'var(--red)'}"></div></div>` : '';
+      return `<tr>
+        <td><span class="ticker-badge">${h.ticker}</span></td>
+        <td class="right">${fmtN(h.shares)}</td>
+        <td class="right">${fmt(h.current_price)}</td>
+        <td class="right">${fmt(h.avg_cost)}</td>
+        <td class="right">${fmt(h.cost_basis)}</td>
+        <td class="right">${fmt(h.market_value)}</td>
+        <td class="right ${pnlCls(h.pnl)}">${fmt(h.pnl)}<br><small>${pct(h.pnl_pct)}</small>${bar}</td>
+        <td class="center">
+          <button class="btn-icon buy" onclick="quickTrade('buy','${h.ticker}')">▲</button>
+          <button class="btn-icon"     onclick="quickTrade('sell','${h.ticker}')">▼</button>
+          <button class="btn-icon"     onclick="removeHolding('${h.ticker}')">✕</button>
+        </td>
+      </tr>`;
+    }).join('');
+    container.innerHTML = `<table><thead><tr><th>Ticker</th><th class="right">Shares</th><th class="right">Price</th><th class="right">Avg Cost</th><th class="right">Cost Basis</th><th class="right">Market Val</th><th class="right">P&amp;L</th><th class="center">Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function renderAllocation(d) {
+    const container = document.getElementById('allocation-container');
+    const holdings  = (d.holdings||[]).filter(h=>h.market_value);
+    const cash = d.cash||0, total = d.total_value||1;
+    if (!holdings.length && !cash) { container.innerHTML='<div class="empty" style="padding:10px">No data</div>'; return; }
+    const colors = ['var(--blue)','var(--green)','var(--orange)','var(--purple)','var(--red)','#38B2AC','#ED8936','#667EEA','#F56565','#48BB78'];
+    let html = holdings.map((h,i) => {
+      const w = ((h.market_value/total)*100).toFixed(1);
+      return `<div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;margin-bottom:4px">
+          <span style="color:${colors[i%colors.length]}">${h.ticker}</span>
+          <span style="color:var(--subtext)">${w}% · ${fmt(h.market_value)}</span>
+        </div>
+        <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${w}%;background:${colors[i%colors.length]};border-radius:3px;transition:width .4s"></div>
+        </div>
+      </div>`;
+    }).join('');
+    if (cash>0) {
+      const w=((cash/total)*100).toFixed(1);
+      html+=`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;margin-bottom:4px"><span style="color:var(--subtext)">CASH</span><span style="color:var(--subtext)">${w}% · ${fmt(cash)}</span></div><div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:${w}%;background:var(--subtext);border-radius:3px"></div></div></div>`;
+    }
+    container.innerHTML = html;
+  }
+
+  async function loadAdvice() {
+    const data = await fetchJSON('/api/portfolio/advice');
+    if (!data) return;
     const warnings=data.warnings||[], advice=data.advice||[], opp=data.opportunities||[];
     document.getElementById('warn-count').textContent = warnings.length||'';
     document.getElementById('adv-count').textContent  = advice.length||'';
@@ -408,84 +329,90 @@ async function loadAdvice() {
         : items.map(i=>`<div class="advice-card ${i.severity||'info'}">${i.ticker?`<div class="advice-ticker">${i.ticker}</div>`:''}<div style="color:var(--text);font-size:12px">${i.message}</div><span class="advice-action">${i.action||''}</span></div>`).join('');
     };
     renderCards(warnings,'tab-warnings'); renderCards(advice,'tab-advice'); renderCards(opp,'tab-opportunities');
-  } catch(e) { console.error('Advice error:',e); }
-}
+  }
 
-async function loadTransactions() {
-  try {
-    const txs = await (await fetch('/api/portfolio/transactions?limit=30')).json();
-    const el  = document.getElementById('tx-container');
+  async function loadTransactions() {
+    const txs = await fetchJSON('/api/portfolio/transactions?limit=30');
+    if (!txs) return;
+    const el = document.getElementById('tx-container');
     el.innerHTML = !txs.length ? '<div class="empty" style="padding:10px">No transactions yet.</div>'
       : txs.map(tx => {
         const cls=tx.action.replace(/\s+/g,'-'), label=tx.ticker||'CASH';
         const amt=tx.amount?fmt(tx.amount):(tx.shares?fmtN(tx.shares)+' sh':'');
-        const ts=tx.ts?tx.ts.substring(0,16):'';
-        return `<div class="tx-row"><div style="display:flex;align-items:center;gap:8px"><span class="tx-action tx-${cls}">${tx.action}</span><span style="color:var(--subtext);font-size:11px">${label}</span></div><div class="tx-amount"><div style="font-size:12px">${amt}</div><div class="tx-meta">${ts}</div></div></div>`;
+        return `<div class="tx-row">
+          <div style="display:flex;align-items:center;gap:8px"><span class="tx-action tx-${cls}">${tx.action}</span><span style="color:var(--subtext);font-size:11px">${label}</span></div>
+          <div class="tx-amount"><div style="font-size:12px">${amt}</div><div class="tx-meta">${(tx.ts||'').substring(0,16)}</div></div>
+        </div>`;
       }).join('');
-  } catch(e) { console.error('TX error:',e); }
-}
+  }
 
-async function submitAddHolding() {
-  const ticker=document.getElementById('h-ticker').value.trim().toUpperCase();
-  const shares=parseFloat(document.getElementById('h-shares').value);
-  const avg_cost=parseFloat(document.getElementById('h-cost').value);
-  const notes=document.getElementById('h-notes').value.trim();
-  if (!ticker||isNaN(shares)||shares<=0||isNaN(avg_cost)||avg_cost<=0) { toast('Please fill in ticker, shares, and avg cost.','var(--red)'); return; }
-  const data = await (await fetch('/api/portfolio/holdings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker,shares,avg_cost,notes})})).json();
-  if (data.error) { toast(data.error,'var(--red)'); return; }
-  toast(`✓ ${ticker} position saved`,'var(--green)');
-  closeModal('add-holding');
-  ['h-ticker','h-shares','h-cost','h-notes'].forEach(id=>document.getElementById(id).value='');
+  async function submitAddHolding() {
+    const ticker   = document.getElementById('h-ticker').value.trim().toUpperCase();
+    const shares   = parseFloat(document.getElementById('h-shares').value);
+    const avg_cost = parseFloat(document.getElementById('h-cost').value);
+    const notes    = document.getElementById('h-notes').value.trim();
+    if (!ticker||isNaN(shares)||shares<=0||isNaN(avg_cost)||avg_cost<=0) { toast('Please fill in ticker, shares, and avg cost.','var(--red)'); return; }
+    const data = await postJSON('/api/portfolio/holdings', {ticker,shares,avg_cost,notes});
+    if (data?.error) { toast(data.error,'var(--red)'); return; }
+    toast(`✓ ${ticker} position saved`,'var(--green)');
+    closeModal('add-holding');
+    ['h-ticker','h-shares','h-cost','h-notes'].forEach(id=>document.getElementById(id).value='');
+    loadAll();
+  }
+
+  async function submitTrade() {
+    const action   = document.getElementById('t-action').value;
+    const ticker   = document.getElementById('t-ticker').value.trim().toUpperCase();
+    const shares   = parseFloat(document.getElementById('t-shares').value);
+    const price    = parseFloat(document.getElementById('t-price').value);
+    const adjCash  = document.getElementById('t-cash').value === 'true';
+    if (!ticker||isNaN(shares)||isNaN(price)) { toast('Fill in all trade fields.','var(--red)'); return; }
+    const ep   = action==='buy' ? '/api/portfolio/buy' : '/api/portfolio/sell';
+    const body = action==='buy' ? {ticker,shares,price,deduct_cash:adjCash} : {ticker,shares,price,add_to_cash:adjCash};
+    const data = await postJSON(ep, body);
+    if (data?.error) { toast(data.error,'var(--red)'); return; }
+    toast(`✓ ${action.toUpperCase()} ${shares} ${ticker} @ $${price}`,'var(--green)');
+    closeModal('trade'); loadAll();
+  }
+
+  function quickTrade(action, ticker) {
+    document.getElementById('t-action').value = action;
+    document.getElementById('t-ticker').value = ticker;
+    document.getElementById('t-shares').value = '';
+    document.getElementById('t-price').value  = summaryData?.prices?.[ticker]?.toFixed(2)||'';
+    openModal('trade');
+  }
+
+  async function removeHolding(ticker) {
+    if (!confirm(`Remove ${ticker} from portfolio?`)) return;
+    const data = await fetch(`/api/portfolio/holdings/${ticker}`, {method:'DELETE'}).then(r=>r.json()).catch(()=>null);
+    if (!data?.removed) { toast('Could not remove position.','var(--red)'); return; }
+    toast(`✓ ${ticker} removed`,'var(--orange)'); loadAll();
+  }
+
+  async function submitCashAdjust(sign) {
+    const isD    = sign > 0;
+    const amtId  = isD ? 'dep-amount' : 'with-amount';
+    const noteId = isD ? 'dep-note'   : 'with-note';
+    const modal  = isD ? 'deposit'    : 'withdraw';
+    const amount = parseFloat(document.getElementById(amtId).value);
+    const note   = document.getElementById(noteId).value;
+    if (isNaN(amount)||amount<=0) { toast('Enter a valid amount.','var(--red)'); return; }
+    await postJSON('/api/portfolio/cash/adjust', {delta: sign*amount, note});
+    toast(`✓ Cash ${isD?'deposited':'withdrawn'}: ${fmt(amount)}`, isD?'var(--green)':'var(--orange)');
+    closeModal(modal); loadAll();
+  }
+
+  async function submitSetCash() {
+    const amount = parseFloat(document.getElementById('set-amount').value);
+    const note   = document.getElementById('set-note').value;
+    if (isNaN(amount)||amount<0) { toast('Enter a valid amount.','var(--red)'); return; }
+    await postJSON('/api/portfolio/cash', {amount, note});
+    toast('✓ Cash balance set to '+fmt(amount),'var(--blue)');
+    closeModal('set-cash'); loadAll();
+  }
+
   loadAll();
-}
-
-async function submitTrade() {
-  const action=document.getElementById('t-action').value, ticker=document.getElementById('t-ticker').value.trim().toUpperCase();
-  const shares=parseFloat(document.getElementById('t-shares').value), price=parseFloat(document.getElementById('t-price').value);
-  const adjCash=document.getElementById('t-cash').value==='true';
-  if (!ticker||isNaN(shares)||isNaN(price)) { toast('Fill in all trade fields.','var(--red)'); return; }
-  const ep=action==='buy'?'/api/portfolio/buy':'/api/portfolio/sell';
-  const body=action==='buy'?{ticker,shares,price,deduct_cash:adjCash}:{ticker,shares,price,add_to_cash:adjCash};
-  const data=await (await fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
-  if (data.error) { toast(data.error,'var(--red)'); return; }
-  toast(`✓ ${action.toUpperCase()} ${shares} ${ticker} @ $${price}`,'var(--green)');
-  closeModal('trade'); loadAll();
-}
-
-function quickTrade(action, ticker) {
-  document.getElementById('t-action').value=action;
-  document.getElementById('t-ticker').value=ticker;
-  document.getElementById('t-shares').value='';
-  document.getElementById('t-price').value = summaryData?.prices?.[ticker]?.toFixed(2)||'';
-  openModal('trade');
-}
-
-async function removeHolding(ticker) {
-  if (!confirm(`Remove ${ticker} from portfolio?`)) return;
-  const data=await (await fetch(`/api/portfolio/holdings/${ticker}`,{method:'DELETE'})).json();
-  if (!data.removed) { toast('Could not remove position.','var(--red)'); return; }
-  toast(`✓ ${ticker} removed`,'var(--orange)'); loadAll();
-}
-
-async function submitCashAdjust(sign) {
-  const isD=sign>0, amtId=isD?'dep-amount':'with-amount', noteId=isD?'dep-note':'with-note', modal=isD?'deposit':'withdraw';
-  const amount=parseFloat(document.getElementById(amtId).value), note=document.getElementById(noteId).value;
-  if (isNaN(amount)||amount<=0) { toast('Enter a valid amount.','var(--red)'); return; }
-  await fetch('/api/portfolio/cash/adjust',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta:sign*amount,note})});
-  toast(`✓ Cash ${isD?'deposited':'withdrawn'}: ${fmt(amount)}`, isD?'var(--green)':'var(--orange)');
-  closeModal(modal); loadAll();
-}
-
-async function submitSetCash() {
-  const amount=parseFloat(document.getElementById('set-amount').value), note=document.getElementById('set-note').value;
-  if (isNaN(amount)||amount<0) { toast('Enter a valid amount.','var(--red)'); return; }
-  await fetch('/api/portfolio/cash',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount,note})});
-  toast('✓ Cash balance set to '+fmt(amount),'var(--blue)');
-  closeModal('set-cash'); loadAll();
-}
-
-loadAll();
-setInterval(loadSummary, 60000);
+  setInterval(loadSummary, 60000);
 </script>
-</body>
-</html>
+{% endblock %}

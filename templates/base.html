@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Stock Predictor{% endblock %} — Stock Predictor</title>
+
+  {# Shared design system — CSS variables, nav, buttons, tables, utilities #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+
+  {# Page-specific styles go here #}
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+{# ── Navigation ─────────────────────────────────────────────────────────── #}
+{#
+   The active_page variable is set in each child template via:
+     {% set active_page = 'index' %}   (or 'portfolio' / 'options')
+   so the nav link for the current page gets the .active class.
+#}
+<nav>
+  <a class="brand" href="/">◈ STOCK PRED</a>
+  <a href="/"             class="{{ 'active' if active_page == 'index'     else '' }}">Dashboard</a>
+  <a href="/portfolio"    class="{{ 'active' if active_page == 'portfolio'  else '' }}">Portfolio</a>
+  <a href="/options-flow" class="{{ 'active' if active_page == 'options'    else '' }}">Options Flow</a>
+  <div class="spacer"></div>
+  {% block nav_extras %}{% endblock %}
+  <div id="nav-clock"></div>
+</nav>
+
+{# ── Page content ────────────────────────────────────────────────────────── #}
+{% block content %}{% endblock %}
+
+{# ── Shared utilities (clock, formatters, fetch wrappers) ────────────────── #}
+<script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+
+{# Page-specific scripts go here, after utils so they can call fmt(), etc. #}
+{% block extra_js %}{% endblock %}
+
+</body>
+</html>

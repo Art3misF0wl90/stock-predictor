@@ -4,7 +4,7 @@ from datetime import date
 # -- Watchlist
 
 TICKERS = [
-    "AAPL", "MSFT", "TSLA", "JPM", "NVDA"   #original 5
+    "AAPL", "MSFT", "TSLA", "JPM", "NVDA",  #original 5
     "GOOGL", "AMZN", "META", "SPY", "AMD",  #Added
     "GME"
 ]

@@ -1,11 +1,28 @@
-import os
+# app/services/bot.py
+#
+# AI chatbot powered by Groq's Llama 3.3 70B model.
+#
+# Implements a lightweight tool-calling protocol:
+#   1. The model returns JSON when it wants to call a function:
+#        {"tool": "tool_name", "input": {"param": "value"}}
+#   2. dispatch_tool() executes the function and returns a result string.
+#   3. The result is fed back as a user message and the model produces
+#      a final natural-language response.
+#
+# Public API:
+#   chat(user_message, history) → (response_str, updated_history)
+#
+# The terminal bot (run standalone) and the WebSocket handler in
+# app/__init__.py both call chat() — the interface is identical.
+
 import json
-from groq import Groq
+import os
 from datetime import date, datetime
 
+from groq import Groq
+
 from predict import run_predictions, fetch_latest_data, TICKER_WIN_RATES
-from database import (get_todays_signals, get_signal_history,
-                      get_summary_stats)
+from database import (get_todays_signals, get_signal_history, get_summary_stats)
 from macro_loader import fetch_macro
 from sentiment_loader import load_all_sentiment
 from backtest import get_signal_returns
@@ -14,10 +31,14 @@ from earnings_loader import load_all_earnings, build_earnings_features
 from features import add_features
 from config import TICKERS
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-MODEL  = "llama-3.3-70b-versatile"
+_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+_MODEL  = "llama-3.3-70b-versatile"
 
-SYSTEM_PROMPT = """You are a stock prediction and portfolio management assistant with access to a machine
+# ---------------------------------------------------------------------------
+# System prompt
+# ---------------------------------------------------------------------------
+
+_SYSTEM_PROMPT = """You are a stock prediction and portfolio management assistant with access to a machine
 learning prediction system and a live portfolio tracker.
 
 The models use technical indicators, macroeconomic data, news sentiment scored
@@ -68,15 +89,15 @@ Available tools:
 - portfolio_add_holding: {"ticker": "MSFT", "shares": 20, "avg_cost": 380.00, "notes": "long term hold"}
 - portfolio_remove_holding: {"ticker": "GME"}
 - get_transactions: Get recent portfolio transaction history
- 
+
 Portfolio guidance rules:
 - When user asks about their portfolio, IMMEDIATELY call get_portfolio_summary
 - When user asks what to do today with their portfolio, call get_portfolio_advice
 - When user says they bought or sold something, call portfolio_buy or portfolio_sell
 - When user wants to set their starting cash, call portfolio_set_cash
-- Always factor in cash position when making buy recommendations — never suggest buying more than available cash
+- Always factor in cash position when making buy recommendations
 - Flag concentrated positions (>35% of portfolio in one stock)
-- Cross-reference holdings against today's signals automatically when giving portfolio advice
+- Cross-reference holdings against today's signals when giving portfolio advice
 
 If you need to call a tool, respond with ONLY the JSON above, nothing else.
 If you do NOT need a tool, respond normally in plain English.
@@ -84,100 +105,95 @@ If you do NOT need a tool, respond normally in plain English.
 Always remind users these are model predictions, not financial advice.
 
 When a user asks what to buy, what signals look like, or anything requiring
-data — call the appropriate tool IMMEDIATELY without asking for permission
-or explaining what you are about to do. Just call it.
+data — call the appropriate tool IMMEDIATELY without asking for permission.
 
-For watchlist tickers (AAPL, MSFT, TSLA, JPM, NVDA, GOOGL, AMZN, META, SPY, AMD)
-use get_todays_signals and explain_signal.
+For watchlist tickers use get_todays_signals and explain_signal.
 For ANY other ticker the user asks about, IMMEDIATELY call analyze_any_ticker.
-If the user asks to add a ticker permanently to the watchlist, call add_to_watchlist."""
+If the user asks to add a ticker permanently, call add_to_watchlist."""
 
-TOOLS_THAT_NEED_INPUT = ["get_signal_history", "run_backtest", "explain_signal"]
 
-def tool_get_todays_signals():
+# ---------------------------------------------------------------------------
+# Individual tool implementations
+# ---------------------------------------------------------------------------
+
+def _tool_get_todays_signals() -> dict:
     df = get_todays_signals()
     if df.empty:
-        return {"status": "no_signals",
-                "message": "No signals in database. Run predictions first.",
-                "signals": []}
-    signals = df[["ticker","action","prob_up","win_rate",
-                   "horizon","close_price","model_name"]].to_dict("records")
+        return {"status": "no_signals", "message": "No signals — run predictions first.", "signals": []}
+    signals = df[["ticker", "action", "prob_up", "win_rate", "horizon", "close_price", "model_name"]].to_dict("records")
     return {
         "date":    str(date.today()),
         "signals": signals,
         "summary": {
-            "buy_signals":   len([s for s in signals if "BUY" in s["action"]]),
+            "buy_signals":   len([s for s in signals if "BUY"  in s["action"]]),
             "avoid_signals": len([s for s in signals if s["action"] == "AVOID"]),
             "hold_signals":  len([s for s in signals if s["action"] == "HOLD"]),
-        }
+        },
     }
 
-def tool_run_fresh_predictions():
+
+def _tool_run_fresh_predictions() -> dict:
     print("  [Bot] Running fresh predictions...")
     signals = run_predictions()
     valid   = [s for s in signals if s]
     return {"date": str(date.today()), "signals": valid, "count": len(valid)}
 
-def tool_get_signal_history(ticker: str, days: int = 30):
+
+def _tool_get_signal_history(ticker: str, days: int = 30) -> dict:
     df = get_signal_history(ticker.upper(), days)
     if df.empty:
-        return {"ticker": ticker, "history": [],
-                "message": "No history found. Run predict.py daily to build history."}
+        return {"ticker": ticker, "history": [], "message": "No history found."}
     return {
         "ticker":        ticker,
         "days":          days,
-        "history":       df[["date","action","prob_up","win_rate",
-                              "close_price"]].to_dict("records"),
+        "history":       df[["date", "action", "prob_up", "win_rate", "close_price"]].to_dict("records"),
         "total_signals": len(df),
-        "buy_signals":   len(df[df["action"].isin(["BUY","STRONG BUY"])]),
+        "buy_signals":   len(df[df["action"].isin(["BUY", "STRONG BUY"])]),
     }
 
-def tool_get_macro_conditions():
+
+def _tool_get_macro_conditions() -> dict:
     macro_df = fetch_macro()
     latest   = macro_df.iloc[-1]
     prev     = macro_df.iloc[-2]
     vix      = float(latest["vix"])
-    vix_prev = float(prev["vix"])
-    tsy      = float(latest["treasury"])
-    dollar   = float(latest["dollar"])
 
-    if vix < 15:
-        fear = "Low (calm market)"
-    elif vix < 20:
-        fear = "Normal"
-    elif vix < 30:
-        fear = "Elevated (caution)"
-    else:
-        fear = "High (fear/crisis mode)"
-
+    fear = (
+        "Low (calm market)"   if vix < 15 else
+        "Normal"              if vix < 20 else
+        "Elevated (caution)"  if vix < 30 else
+        "High (fear/crisis mode)"
+    )
     return {
-        "date":           str(macro_df.index[-1].date()),
-        "vix":            round(vix, 2),
-        "vix_change":     round(vix - vix_prev, 2),
-        "fear_level":     fear,
-        "treasury_10y":   round(tsy, 3),
-        "dollar_index":   round(dollar, 2),
+        "date":         str(macro_df.index[-1].date()),
+        "vix":          round(vix, 2),
+        "vix_change":   round(vix - float(prev["vix"]), 2),
+        "fear_level":   fear,
+        "treasury_10y": round(float(latest["treasury"]), 3),
+        "dollar_index": round(float(latest["dollar"]), 2),
     }
 
-def tool_get_performance_stats():
-    stats = get_summary_stats()
+
+def _tool_get_performance_stats() -> dict:
     return {
-        "database_stats":           stats,
-        "historical_win_rates":     TICKER_WIN_RATES,
+        "database_stats":       get_summary_stats(),
+        "historical_win_rates": TICKER_WIN_RATES,
     }
 
-def tool_run_backtest(ticker: str):
+
+def _tool_run_backtest(ticker: str) -> dict:
     ticker = ticker.upper()
     if ticker not in TICKERS:
         return {"error": f"{ticker} not in watchlist. Available: {TICKERS}"}
     print(f"  [Bot] Running backtest for {ticker}...")
-    all_data  = load_all_tickers()
-    macro_df  = fetch_macro()
-    sentiment = load_all_sentiment()
-    earnings  = load_all_earnings(all_data)
+    all_data   = load_all_tickers()
+    macro_df   = fetch_macro()
+    sentiment  = load_all_sentiment()
+    earnings   = load_all_earnings(all_data)
     signals_df = get_signal_returns(
         ticker, all_data[ticker],
-        macro_df=macro_df, sentiment=sentiment, earnings=earnings)
+        macro_df=macro_df, sentiment=sentiment, earnings=earnings,
+    )
     if signals_df is None or signals_df.empty:
         return {"error": "Could not generate backtest signals"}
     buy     = signals_df[signals_df["signal"] == 1]
@@ -199,14 +215,15 @@ def tool_run_backtest(ticker: str):
         "holding_periods": results,
     }
 
-def tool_explain_signal(ticker: str):
-    ticker = ticker.upper()
-    import joblib
+
+def _tool_explain_signal(ticker: str) -> dict:
+    ticker      = ticker.upper()
+    import joblib as _jl
     config_path = os.path.join("models", f"{ticker}_config.pkl")
     if not os.path.exists(config_path):
         return {"error": f"No model found for {ticker}"}
 
-    cfg        = joblib.load(config_path)
+    cfg        = _jl.load(config_path)
     fwd_days   = cfg["fwd_days"]
     model_name = cfg["model_name"]
     feat_cols  = cfg["feat_cols"]
@@ -216,36 +233,29 @@ def tool_explain_signal(ticker: str):
     df        = fetch_latest_data(ticker)
     sent      = sentiment.get(ticker)
 
-    # Use earnings only if the saved model was trained with them
-    has_earnings = any(
-        "eps" in c or "pead" in c or "earnings" in c
-        for c in feat_cols
-    )
-    from earnings_loader import build_earnings_features
+    has_earnings = any("eps" in c or "pead" in c or "earnings" in c for c in feat_cols)
     earn = build_earnings_features(ticker, df) if has_earnings else None
 
-    df_feat = add_features(df, macro_df=macro_df,
-                           sentiment_series=sent,
-                           earnings_df=earn,
-                           forward_days=fwd_days,
-                           predict_mode=True)
-
+    df_feat = add_features(
+        df, macro_df=macro_df, sentiment_series=sent,
+        earnings_df=earn, forward_days=fwd_days, predict_mode=True,
+    )
     if df_feat.empty:
         return {"error": "Could not generate features"}
 
     latest = df_feat.iloc[-1]
-    key_features = {}
-    for col in ["rsi_14", "macd_hist", "bb_position", "return_5d",
-                "return_20d", "vix", "sentiment", "pead_signal",
-                "overnight_gap", "price_position_20", "up_days_5"]:
-        if col in latest.index:
-            key_features[col] = round(float(latest[col]), 4)
+    key_features = {
+        col: round(float(latest[col]), 4)
+        for col in ["rsi_14", "macd_hist", "bb_position", "return_5d",
+                    "return_20d", "vix", "sentiment", "pead_signal",
+                    "overnight_gap", "price_position_20", "up_days_5"]
+        if col in latest.index
+    }
 
-    scaler    = joblib.load(os.path.join("models", f"{ticker}_scaler.pkl"))
-    model     = joblib.load(os.path.join("models", f"{ticker}_model.pkl"))
-    feat_cols_present = [c for c in feat_cols if c in df_feat.columns]
-    X         = df_feat[feat_cols_present].iloc[[-1]].values
-    prob_up   = float(model.predict_proba(scaler.transform(X))[0][1])
+    scaler  = _jl.load(os.path.join("models", f"{ticker}_scaler.pkl"))
+    model   = _jl.load(os.path.join("models", f"{ticker}_model.pkl"))
+    fc      = [c for c in feat_cols if c in df_feat.columns]
+    prob_up = float(model.predict_proba(scaler.transform(df_feat[fc].iloc[[-1]].values))[0][1])
 
     return {
         "ticker":       ticker,
@@ -264,157 +274,180 @@ def tool_explain_signal(ticker: str):
             "price_position_20": "0 = at 20-day low, 1 = at 20-day high",
             "overnight_gap":     "positive = gapped up overnight",
             "up_days_5":         "how many of last 5 days closed up",
-        }
+        },
     }
 
-def tool_get_portfolio_summary() -> str:
-    from portfolio import get_portfolio_summary
+
+def _tool_analyze_any_ticker(ticker: str) -> str:
+    from analyze import analyze_ticker
+    print(f"  [Bot] Analyzing {ticker.upper()}...")
+    return json.dumps(analyze_ticker(ticker), default=str)
+
+
+def _tool_add_to_watchlist(ticker: str) -> str:
+    from analyze import analyze_ticker, add_ticker_to_watchlist
+    ticker = ticker.upper()
+    quality_result = analyze_ticker(ticker)
+    if quality_result.get("quality", {}).get("score", 0) < 40:
+        return json.dumps({
+            "status": "rejected",
+            "reason": "Quality score too low",
+            "quality": quality_result.get("quality", {}),
+        })
+    return json.dumps(add_ticker_to_watchlist(ticker), default=str)
+
+
+def _tool_get_portfolio_summary() -> str:
+    from app.services.portfolio import get_portfolio_summary
     return json.dumps(get_portfolio_summary(), default=str)
 
-def tool_get_portfolio_advice() -> str:
-    from portfolio import get_portfolio_advice
+
+def _tool_get_portfolio_advice() -> str:
+    from app.services.portfolio import get_portfolio_advice
     signals_df = get_todays_signals()
     signals = signals_df.to_dict("records") if not signals_df.empty else []
     return json.dumps(get_portfolio_advice(signals), default=str)
 
-def tool_get_portfolio_buy(ticker: str, shares: float, price: float, deduct_cash: bool = True) -> str:
-    from portfolio import buy_shares
+
+def _tool_portfolio_buy(ticker: str, shares: float, price: float, deduct_cash: bool = True) -> str:
+    from app.services.portfolio import buy_shares
     return json.dumps(buy_shares(ticker, shares, price, deduct_cash), default=str)
 
-def tool_portfolio_sell(ticker: str, shares: float, price: float, add_to_cash: bool=True) -> str:
-    from portfolio import sell_shares
+
+def _tool_portfolio_sell(ticker: str, shares: float, price: float, add_to_cash: bool = True) -> str:
+    from app.services.portfolio import sell_shares
     return json.dumps(sell_shares(ticker, shares, price, add_to_cash), default=str)
 
-def tool_portfolio_set_cash(amount: float) -> str:
-    from portfolio import set_cash
+
+def _tool_portfolio_set_cash(amount: float) -> str:
+    from app.services.portfolio import set_cash
     return json.dumps(set_cash(amount), default=str)
 
-def tool_portfolio_add_holding(ticker: str, shares: float, avg_cost: float, notes: str = "") -> str:
-    from portfolio import upsert_holding
+
+def _tool_portfolio_add_holding(ticker: str, shares: float, avg_cost: float, notes: str = "") -> str:
+    from app.services.portfolio import upsert_holding
     return json.dumps(upsert_holding(ticker, shares, avg_cost, notes), default=str)
 
-def tool_portfolio_remove_holding(ticker: str) -> str:
-    from portfolio import remove_holding
+
+def _tool_portfolio_remove_holding(ticker: str) -> str:
+    from app.services.portfolio import remove_holding
     return json.dumps(remove_holding(ticker), default=str)
 
-def tool_get_transactions(limit: int = 20) -> str:
-    from portfolio import get_transactions
+
+def _tool_get_transactions(limit: int = 20) -> str:
+    from app.services.portfolio import get_transactions
     return json.dumps(get_transactions(limit), default=str)
 
-def tool_analyze_any_ticker(ticker: str) -> str:
-    from analyze import analyze_ticker
-    print(f"  [Bot] Analyzing {ticker.upper()}...")
-    result = analyze_ticker(ticker)
-    return json.dumps(result, default=str)
 
-def tool_add_to_watchlist(ticker: str) -> str:
-    from analyze import add_ticker_to_watchlist, analyze_ticker
-    ticker = ticker.upper()
-    quality_result = analyze_ticker(ticker)
-    quality_score  = quality_result.get("quality", {}).get("score", 0)
-    if quality_score < 40:
-        return json.dumps({
-            "status":  "rejected",
-            "reason":  "Quality score too low for reliable predictions",
-            "quality": quality_result.get("quality", {}),
-        })
-    result = add_ticker_to_watchlist(ticker)
-    return json.dumps(result, default=str)
+# ---------------------------------------------------------------------------
+# Tool dispatcher
+# ---------------------------------------------------------------------------
 
 def dispatch_tool(tool_name: str, tool_input: dict) -> str:
+    """Route a tool call from the model to the correct implementation."""
     try:
         if tool_name == "get_todays_signals":
-            result = tool_get_todays_signals()
+            result = _tool_get_todays_signals()
         elif tool_name == "run_fresh_predictions":
-            result = tool_run_fresh_predictions()
+            result = _tool_run_fresh_predictions()
         elif tool_name == "get_signal_history":
-            result = tool_get_signal_history(
+            result = _tool_get_signal_history(
                 tool_input.get("ticker", "AAPL"),
-                tool_input.get("days", 30))
+                tool_input.get("days", 30),
+            )
         elif tool_name == "get_macro_conditions":
-            result = tool_get_macro_conditions()
+            result = _tool_get_macro_conditions()
         elif tool_name == "get_performance_stats":
-            result = tool_get_performance_stats()
+            result = _tool_get_performance_stats()
         elif tool_name == "run_backtest":
-            result = tool_run_backtest(tool_input.get("ticker", "AAPL"))
+            result = _tool_run_backtest(tool_input.get("ticker", "AAPL"))
         elif tool_name == "explain_signal":
-            result = tool_explain_signal(tool_input.get("ticker", "AAPL"))
+            result = _tool_explain_signal(tool_input.get("ticker", "AAPL"))
         elif tool_name == "analyze_any_ticker":
-            result = tool_analyze_any_ticker(tool_input.get("ticker", ""))
+            result = _tool_analyze_any_ticker(tool_input.get("ticker", ""))
         elif tool_name == "add_to_watchlist":
-            result = tool_add_to_watchlist(tool_input.get("ticker", ""))
+            result = _tool_add_to_watchlist(tool_input.get("ticker", ""))
         elif tool_name == "get_portfolio_summary":
-            result = tool_get_portfolio_summary()
+            result = _tool_get_portfolio_summary()
         elif tool_name == "get_portfolio_advice":
-            result = tool_get_portfolio_advice()
+            result = _tool_get_portfolio_advice()
         elif tool_name == "portfolio_buy":
-            result = tool_portfolio_buy(
+            result = _tool_portfolio_buy(
                 tool_input.get("ticker", ""),
                 float(tool_input.get("shares", 0)),
                 float(tool_input.get("price", 0)),
                 tool_input.get("deduct_cash", True),
             )
         elif tool_name == "portfolio_sell":
-            result = tool_portfolio_sell(
+            result = _tool_portfolio_sell(
                 tool_input.get("ticker", ""),
                 float(tool_input.get("shares", 0)),
                 float(tool_input.get("price", 0)),
                 tool_input.get("add_to_cash", True),
             )
         elif tool_name == "portfolio_set_cash":
-            result = tool_portfolio_set_cash(float(tool_input.get("amount", 0)))
+            result = _tool_portfolio_set_cash(float(tool_input.get("amount", 0)))
         elif tool_name == "portfolio_add_holding":
-            result = tool_portfolio_add_holding(
+            result = _tool_portfolio_add_holding(
                 tool_input.get("ticker", ""),
                 float(tool_input.get("shares", 0)),
                 float(tool_input.get("avg_cost", 0)),
                 tool_input.get("notes", ""),
             )
         elif tool_name == "portfolio_remove_holding":
-            result = tool_portfolio_remove_holding(tool_input.get("ticker", ""))
+            result = _tool_portfolio_remove_holding(tool_input.get("ticker", ""))
         elif tool_name == "get_transactions":
-            result = tool_get_transactions(int(tool_input.get("limit", 20)))
+            result = _tool_get_transactions(int(tool_input.get("limit", 20)))
         else:
             result = {"error": f"Unknown tool: {tool_name}"}
     except Exception as e:
         result = {"error": str(e)}
+
     return json.dumps(result, default=str)
 
-def chat(user_message: str, history: list) -> tuple:
+
+# ---------------------------------------------------------------------------
+# Chat loop
+# ---------------------------------------------------------------------------
+
+def chat(user_message: str, history: list) -> tuple[str, list]:
+    """
+    Process one user turn and return (response, updated_history).
+
+    If the model wants to call a tool it responds with JSON; we dispatch
+    the tool, append the result as a user message, and make a second call
+    to get the final natural-language response.
+    """
     history.append({"role": "user", "content": user_message})
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}] + history
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
-
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        max_tokens=2048,
-        temperature=0.3,
+    response = _client.chat.completions.create(
+        model=_MODEL, messages=messages, max_tokens=2048, temperature=0.3,
     )
     reply = response.choices[0].message.content.strip()
 
-    # Check if model wants to call a tool
-    tool_called = False
+    # ── Tool call detection ────────────────────────────────────────────────
     if reply.startswith("{"):
         try:
             parsed     = json.loads(reply)
             tool_name  = parsed.get("tool", "")
             tool_input = parsed.get("input", {})
             if tool_name:
-                tool_called = True
                 print(f"  [Bot] Calling tool: {tool_name}")
                 result = dispatch_tool(tool_name, tool_input)
 
                 history.append({"role": "assistant", "content": reply})
-                history.append({"role": "user",
-                                "content": f"Tool result for {tool_name}: {result}\n\nNow give a clear, helpful response to the user based on this data."})
+                history.append({
+                    "role": "user",
+                    "content": (
+                        f"Tool result for {tool_name}: {result}\n\n"
+                        "Now give a clear, helpful response to the user based on this data."
+                    ),
+                })
 
-                messages2  = [{"role": "system", "content": SYSTEM_PROMPT}] + history
-                response2  = client.chat.completions.create(
-                    model=MODEL,
-                    messages=messages2,
-                    max_tokens=2048,
-                    temperature=0.3,
+                messages2 = [{"role": "system", "content": _SYSTEM_PROMPT}] + history
+                response2 = _client.chat.completions.create(
+                    model=_MODEL, messages=messages2, max_tokens=2048, temperature=0.3,
                 )
                 final = response2.choices[0].message.content.strip()
                 history.append({"role": "assistant", "content": final})
@@ -422,19 +455,21 @@ def chat(user_message: str, history: list) -> tuple:
         except json.JSONDecodeError:
             pass
 
-    if not tool_called:
-        history.append({"role": "assistant", "content": reply})
-
+    history.append({"role": "assistant", "content": reply})
     return reply, history
 
-def run_terminal_bot():
-    print("\n" + "═"*60)
-    print("  Stock Prediction Bot — powered by Groq + Llama 3.1 70B")
+
+# ---------------------------------------------------------------------------
+# Terminal bot
+# ---------------------------------------------------------------------------
+
+def run_terminal_bot() -> None:
+    print("\n" + "═" * 60)
+    print("  Stock Prediction Bot — powered by Groq + Llama 3.3 70B")
     print("  Type 'quit' to exit | 'help' for example questions")
-    print("═"*60 + "\n")
+    print("═" * 60 + "\n")
 
-    history = []
-
+    history  = []
     examples = [
         "What should I buy today?",
         "What's the current market fear level?",
@@ -455,11 +490,9 @@ def run_terminal_bot():
 
         if not user_input:
             continue
-
         if user_input.lower() == "quit":
             print("Goodbye!")
             break
-
         if user_input.lower() == "help":
             print("\nExample questions:")
             for ex in examples:
@@ -472,6 +505,7 @@ def run_terminal_bot():
             print(f"\nBot: {response}")
         except Exception as e:
             print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     run_terminal_bot()

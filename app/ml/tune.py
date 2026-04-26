@@ -1,33 +1,65 @@
-import optuna
-import joblib
+# app/ml/tune.py
+#
+# Optional hyperparameter search for XGBoost using Optuna.
+#
+# Runs 150 Bayesian optimisation trials per ticker, searching over:
+#   n_estimators, max_depth, learning_rate, subsample, colsample_bytree,
+#   min_child_weight, gamma, reg_alpha, reg_lambda
+#
+# Results are saved to models/best_params.pkl.
+# To use them in training, load the file in train_classical.py and pass
+# the params dict to XGBClassifier(**params).
+#
+# WARNING: this script is slow — expect 1-3 hours for the full watchlist.
+# Skip it on first run; the default XGBoost params in train_classical.py
+# are already reasonable.
+
 import os
-import numpy as np
-from sklearn.preprocessing import StandardScaler
+
+import joblib
+import optuna
 from sklearn.metrics import roc_auc_score
+from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
-from data_loader import load_all_tickers
-from macro_loader import fetch_macro
-from sentiment_loader import load_all_sentiment
-from earnings_loader import load_all_earnings
-from features import add_features, get_feature_columns
-from splitter import time_split
 from config import TICKERS
+from app.data import load_all_tickers
+from app.data import load_all_earnings
+from app.ml.features import add_features, get_feature_columns
+from app.data import fetch_macro
+from app.data import load_all_sentiment
+from app.ml.splitter import time_split
 
 TICKERS_NO_EARNINGS = ["TSLA", "SPY"]
 
-def tune_ticker(ticker, df, macro_df, sentiment, earnings, n_trials=150):
+
+def tune_ticker(
+    ticker: str,
+    df,
+    macro_df,
+    sentiment,
+    earnings,
+    n_trials: int = 150,
+) -> tuple[dict, float]:
+    """
+    Run Optuna hyperparameter search for one ticker.
+
+    Returns (best_params, best_val_auc).
+    """
     print(f"\nTuning {ticker} ({n_trials} trials)...")
 
     sentiment_series = sentiment.get(ticker) if sentiment else None
-    earnings_df      = (
+    earnings_df = (
         None if ticker in TICKERS_NO_EARNINGS
         else (earnings.get(ticker) if earnings else None)
     )
 
-    df_feat   = add_features(df, macro_df=macro_df,
-                             sentiment_series=sentiment_series,
-                             earnings_df=earnings_df)
+    df_feat   = add_features(
+        df,
+        macro_df=macro_df,
+        sentiment_series=sentiment_series,
+        earnings_df=earnings_df,
+    )
     feat_cols = get_feature_columns(
         include_macro=True,
         include_sentiment=True,
@@ -41,7 +73,7 @@ def tune_ticker(ticker, df, macro_df, sentiment, earnings, n_trials=150):
     X_train = scaler.fit_transform(X_train)
     X_val   = scaler.transform(X_val)
 
-    def objective(trial):
+    def objective(trial: optuna.Trial) -> float:
         params = {
             "n_estimators":     trial.suggest_int("n_estimators", 100, 600),
             "max_depth":        trial.suggest_int("max_depth", 2, 8),
@@ -49,29 +81,28 @@ def tune_ticker(ticker, df, macro_df, sentiment, earnings, n_trials=150):
             "subsample":        trial.suggest_float("subsample", 0.5, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.4, 1.0),
             "min_child_weight": trial.suggest_int("min_child_weight", 1, 20),
-            "gamma":            trial.suggest_float("gamma", 0, 5),
-            "reg_alpha":        trial.suggest_float("reg_alpha", 0, 5),
-            "reg_lambda":       trial.suggest_float("reg_lambda", 0, 5),
+            "gamma":            trial.suggest_float("gamma", 0.0, 5.0),
+            "reg_alpha":        trial.suggest_float("reg_alpha", 0.0, 5.0),
+            "reg_lambda":       trial.suggest_float("reg_lambda", 0.0, 5.0),
             "eval_metric":      "logloss",
             "random_state":     42,
             "verbosity":        0,
         }
         model = XGBClassifier(**params)
-        model.fit(X_train, y_train,
-                  eval_set=[(X_val, y_val)],
-                  verbose=False)
-        return roc_auc_score(y_val, model.predict_proba(X_val)[:,1])
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
+        return roc_auc_score(y_val, model.predict_proba(X_val)[:, 1])
 
-    study = optuna.create_study(direction="maximize")
     optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
     print(f"  Best val AUC: {study.best_value:.4f}")
-    print(f"  Best params:")
+    print("  Best params:")
     for k, v in study.best_params.items():
         print(f"    {k}: {v}")
 
     return study.best_params, study.best_value
+
 
 if __name__ == "__main__":
     all_data  = load_all_tickers()
@@ -82,7 +113,8 @@ if __name__ == "__main__":
     all_best = {}
     for ticker, df in all_data.items():
         params, val_auc = tune_ticker(
-            ticker, df, macro_df, sentiment, earnings, n_trials=150)
+            ticker, df, macro_df, sentiment, earnings, n_trials=150
+        )
         all_best[ticker] = params
 
     print(f"\n{'='*60}")
@@ -93,6 +125,6 @@ if __name__ == "__main__":
         for k, v in params.items():
             print(f"  {k}: {v}")
 
-    # Save best params for use in train_classical.py
+    os.makedirs("models", exist_ok=True)
     joblib.dump(all_best, os.path.join("models", "best_params.pkl"))
     print("\nSaved to models/best_params.pkl")

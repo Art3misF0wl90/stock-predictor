@@ -1,31 +1,46 @@
-import os
-import joblib
-import numpy as np
-import pandas as pd
-from sklearn.metrics import (
-    roc_auc_score,
-    confusion_matrix,
-    classification_report,
-    RocCurveDisplay,
-)
-import matplotlib.pyplot as plt
+# app/ml/evaluate.py
+#
+# Model evaluation report — run after training to measure quality.
+#
+# For each ticker, prints:
+#   - Test-set AUC-ROC for XGBoost and LSTM
+#   - Confusion matrix
+#   - Directional accuracy (how often predicted-UP days actually went up)
+#   - Edge over the market base rate
+#
+# Charts saved to models/:
+#   roc_curves.png      — per-ticker ROC curves
+#   auc_comparison.png  — XGBoost vs LSTM AUC bar chart
 
-from data_loader import load_all_tickers
-from macro_loader import fetch_macro
-from sentiment_loader import load_all_sentiment
-from features import add_features, get_feature_columns
-from splitter import time_split, make_sequences
-from config import TICKERS, SEQUENCE_LENGTH, TRAIN_RATIO, VAL_RATIO
+import os
+
+import joblib
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import (
+    RocCurveDisplay,
+    classification_report,
+    confusion_matrix,
+    roc_auc_score,
+)
 
 import tensorflow as tf
 
+from config import SEQUENCE_LENGTH, TRAIN_RATIO, VAL_RATIO
+from app.data import load_all_tickers
+from app.ml.features import add_features, get_feature_columns
+from app.data import fetch_macro
+from app.data import load_all_sentiment
+from app.ml.splitter import make_sequences
+
+
 def load_test_data(ticker, df, macro_df=None, sentiment=None):
+    """Return (X_test, y_test, feat_cols) for a ticker's held-out test set."""
     sentiment_series = sentiment.get(ticker) if sentiment else None
-    df        = add_features(df, macro_df=macro_df,
-                             sentiment_series=sentiment_series)
+    df = add_features(df, macro_df=macro_df, sentiment_series=sentiment_series)
     feat_cols = get_feature_columns(
         include_macro=macro_df is not None,
-        include_sentiment=sentiment_series is not None
+        include_sentiment=sentiment_series is not None,
     )
     feat_cols = [c for c in feat_cols if c in df.columns]
 
@@ -34,35 +49,39 @@ def load_test_data(ticker, df, macro_df=None, sentiment=None):
 
     X = df[feat_cols].values
     y = df["target"].values
-
     return X[val_end:], y[val_end:], feat_cols
 
+
 def evaluate_xgboost(ticker, X_test, y_test):
+    """Return (probs, auc) or (None, None) if no model file exists."""
+    model_path  = os.path.join("models", f"{ticker}_model.pkl")
     scaler_path = os.path.join("models", f"{ticker}_scaler.pkl")
-    model_path  = os.path.join("models", f"{ticker}_xgb.pkl")
     if not os.path.exists(model_path):
         print(f"  No XGBoost model found for {ticker}")
         return None, None
+
     scaler   = joblib.load(scaler_path)
     model    = joblib.load(model_path)
     X_scaled = scaler.transform(X_test)
     probs    = model.predict_proba(X_scaled)[:, 1]
-    auc      = roc_auc_score(y_test, probs)
-    return probs, auc
+    return probs, roc_auc_score(y_test, probs)
+
 
 def evaluate_lstm(ticker, X_test, y_test):
-    scaler_path = os.path.join("models", f"{ticker}_lstm_scaler.pkl")
+    """Return (probs, auc) or (None, None) if no model file exists."""
     model_path  = os.path.join("models", f"{ticker}_lstm.keras")
+    scaler_path = os.path.join("models", f"{ticker}_lstm_scaler.pkl")
     if not os.path.exists(model_path):
         print(f"  No LSTM model found for {ticker}")
         return None, None
+
     scaler   = joblib.load(scaler_path)
     X_scaled = scaler.transform(X_test)
     X_seq, y_seq = make_sequences(X_scaled, y_test, SEQUENCE_LENGTH)
     model = tf.keras.models.load_model(model_path)
     probs = model.predict(X_seq, verbose=0).flatten()
-    auc   = roc_auc_score(y_seq, probs)
-    return probs, auc
+    return probs, roc_auc_score(y_seq, probs)
+
 
 def print_confusion(y_true, y_pred_probs, model_name, ticker):
     y_pred = (y_pred_probs >= 0.5).astype(int)
@@ -72,13 +91,19 @@ def print_confusion(y_true, y_pred_probs, model_name, ticker):
     print(f"  Actual 0   {cm[0,0]:>10}  {cm[0,1]:>10}")
     print(f"  Actual 1   {cm[1,0]:>10}  {cm[1,1]:>10}")
     print()
-    print(classification_report(y_true, y_pred,
-                                 target_names=["Down", "Up"], digits=3))
+    print(classification_report(y_true, y_pred, target_names=["Down", "Up"], digits=3))
 
-def directional_accuracy_report(ticker, y_true, y_pred_probs, model_name):
-    y_pred     = (y_pred_probs >= 0.5).astype(int)
-    pred_up    = y_pred == 1
-    pred_down  = y_pred == 0
+
+def directional_accuracy_report(ticker, y_true, y_pred_probs, model_name) -> dict:
+    """
+    Compute and print directional accuracy broken down by predicted direction.
+
+    The key metric is 'edge': how much better the model's up-predictions are
+    than simply assuming the market goes up at its base rate.
+    """
+    y_pred    = (y_pred_probs >= 0.5).astype(int)
+    pred_up   = y_pred == 1
+    pred_down = y_pred == 0
 
     correct_up   = (y_true[pred_up]   == 1).sum()
     correct_down = (y_true[pred_down] == 0).sum()
@@ -97,12 +122,16 @@ def directional_accuracy_report(ticker, y_true, y_pred_probs, model_name):
     print(f"  {'─'*50}")
     print(f"  Market base rate (actual up days):  {base:.1%}")
     print(f"  {'─'*50}")
-    print(f"  Predicted UP   ({total_up:>4} signals): "
-          f"{acc_up:.1%} correct  "
-          f"({'BEAT' if up_edge > 0 else 'MISS'} base rate)")
-    print(f"  Predicted DOWN ({total_down:>4} signals): "
-          f"{acc_down:.1%} correct  "
-          f"({'BEAT' if down_edge > 0 else 'MISS'} base rate)")
+    print(
+        f"  Predicted UP   ({total_up:>4} signals): "
+        f"{acc_up:.1%} correct  "
+        f"({'BEAT' if up_edge > 0 else 'MISS'} base rate)"
+    )
+    print(
+        f"  Predicted DOWN ({total_down:>4} signals): "
+        f"{acc_down:.1%} correct  "
+        f"({'BEAT' if down_edge > 0 else 'MISS'} base rate)"
+    )
     print(f"  Overall accuracy:                   {overall:.1%}")
     print(f"  {'─'*50}")
     print(f"  Up signal edge:   {up_edge:+.1%}")
@@ -119,8 +148,9 @@ def directional_accuracy_report(ticker, y_true, y_pred_probs, model_name):
         "down_edge":  down_edge,
     }
 
+
 def plot_roc_curves(results: dict):
-    n    = len(results)
+    n = len(results)
     fig, axes = plt.subplots(1, n, figsize=(5 * n, 5))
     if n == 1:
         axes = [axes]
@@ -137,6 +167,7 @@ def plot_roc_curves(results: dict):
     print(f"\n  ROC curves saved to {out}")
     plt.close()
 
+
 def plot_auc_comparison(summary: dict):
     tickers   = list(summary.keys())
     xgb_aucs  = [summary[t].get("XGBoost") or 0 for t in tickers]
@@ -144,8 +175,8 @@ def plot_auc_comparison(summary: dict):
     x     = np.arange(len(tickers))
     width = 0.35
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(x - width/2, xgb_aucs,  width, label="XGBoost", color="#4C72B0")
-    ax.bar(x + width/2, lstm_aucs, width, label="LSTM",    color="#DD8452")
+    ax.bar(x - width / 2, xgb_aucs,  width, label="XGBoost", color="#4C72B0")
+    ax.bar(x + width / 2, lstm_aucs, width, label="LSTM",    color="#DD8452")
     ax.axhline(0.5, color="red", linestyle="--", alpha=0.5, label="Random")
     ax.set_xticks(x)
     ax.set_xticklabels(tickers)
@@ -158,6 +189,7 @@ def plot_auc_comparison(summary: dict):
     plt.savefig(out, dpi=120, bbox_inches="tight")
     print(f"  AUC comparison saved to {out}")
     plt.close()
+
 
 if __name__ == "__main__":
     print("Loading data...")
@@ -178,18 +210,17 @@ if __name__ == "__main__":
         print(f"  Ticker: {ticker}")
         print(f"{'─'*40}")
 
-        X_test, y_test, _ = load_test_data(
-            ticker, df, macro_df=macro_df, sentiment=sentiment)
-
-        print(f"  Test set: {len(y_test)} samples | "
-              f"Up: {y_test.sum()} | Down: {(1-y_test).sum()}")
+        X_test, y_test, _ = load_test_data(ticker, df, macro_df=macro_df, sentiment=sentiment)
+        print(
+            f"  Test set: {len(y_test)} samples | "
+            f"Up: {y_test.sum()} | Down: {(1-y_test).sum()}"
+        )
 
         xgb_probs, xgb_auc = evaluate_xgboost(ticker, X_test, y_test)
         if xgb_probs is not None:
             print(f"\n  XGBoost Test AUC: {xgb_auc:.4f}")
             print_confusion(y_test, xgb_probs, "XGBoost", ticker)
-            xgb_dir = directional_accuracy_report(
-                ticker, y_test, xgb_probs, "XGBoost")
+            xgb_dir = directional_accuracy_report(ticker, y_test, xgb_probs, "XGBoost")
         else:
             xgb_dir = {}
 
@@ -198,25 +229,18 @@ if __name__ == "__main__":
             y_seq = y_test[SEQUENCE_LENGTH:]
             print(f"\n  LSTM Test AUC: {lstm_auc:.4f}")
             print_confusion(y_seq, lstm_probs, "LSTM", ticker)
-            lstm_dir = directional_accuracy_report(
-                ticker, y_seq, lstm_probs, "LSTM")
+            lstm_dir = directional_accuracy_report(ticker, y_seq, lstm_probs, "LSTM")
         else:
             lstm_dir = {}
 
-        summary[ticker] = {
-            "XGBoost": xgb_auc if xgb_probs is not None else None,
-            "LSTM":    lstm_auc if lstm_probs is not None else None,
-        }
-        dir_summary[ticker] = {
-            "XGBoost": xgb_dir,
-            "LSTM":    lstm_dir,
-        }
-        roc_data[ticker] = {
-            "XGBoost": (xgb_probs,  y_test) if xgb_probs  is not None else (None, None),
+        summary[ticker]     = {"XGBoost": xgb_auc, "LSTM": lstm_auc}
+        dir_summary[ticker] = {"XGBoost": xgb_dir, "LSTM": lstm_dir}
+        roc_data[ticker]    = {
+            "XGBoost": (xgb_probs,  y_test),
             "LSTM":    (lstm_probs, y_test[SEQUENCE_LENGTH:]) if lstm_probs is not None else (None, None),
         }
 
-    # AUC summary
+    # ── Summary tables ─────────────────────────────────────────────────────
     print(f"\n{'═'*60}")
     print("  AUC SUMMARY")
     print(f"{'═'*60}")
@@ -227,12 +251,13 @@ if __name__ == "__main__":
         lstm = f"{scores['LSTM']:.4f}"    if scores["LSTM"]    else "N/A"
         print(f"  {ticker:<8} {xgb:>10} {lstm:>10}")
 
-    # Directional accuracy summary
     print(f"\n{'═'*60}")
     print("  DIRECTIONAL ACCURACY SUMMARY (XGBoost)")
     print(f"{'═'*60}")
-    print(f"  {'Ticker':<8} {'Base%':>7} {'Up acc':>8} "
-          f"{'Dn acc':>8} {'Overall':>9} {'Up edge':>9}")
+    print(
+        f"  {'Ticker':<8} {'Base%':>7} {'Up acc':>8} "
+        f"{'Dn acc':>8} {'Overall':>9} {'Up edge':>9}"
+    )
     print(f"  {'─'*55}")
     for ticker, scores in dir_summary.items():
         xgb = scores.get("XGBoost", {})

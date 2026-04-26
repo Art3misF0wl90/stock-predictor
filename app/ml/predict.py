@@ -1,15 +1,30 @@
+# app/ml/predict.py
+#
+# Daily signal generation — the runtime prediction pipeline.
+#
+# run_predictions() is the main entry point.  It loads each ticker's trained
+# model, fetches the last 300 days of price data, runs the full feature
+# pipeline, applies entry filters, classifies the signal, and writes results
+# to the SQLite database.
+#
+# Public API (imported by bot.py, backtest.py, options_flow.py, app routes):
+#   run_predictions()      — generate + save signals for all watchlist tickers
+#   get_today_signal()     — generate a signal dict for one ticker
+#   apply_entry_filters()  — apply VIX / RSI / trend / earnings blackout gates
+#   fetch_latest_data()    — download the last 300 days of OHLCV for one ticker
+#   TICKER_WIN_RATES       — dict of historical backtest win rates per ticker
+
 import os
-import joblib
 import sqlite3
+from datetime import datetime, date
+
+import joblib
 import numpy as np
 import pandas as pd
-from datetime import datetime, date
 import yfinance as yf
 
-from macro_loader import fetch_macro
-from sentiment_loader import load_all_sentiment
-from earnings_loader import build_earnings_features
-from features import add_features, get_feature_columns
+from app.data import fetch_macro, load_all_sentiment, build_earnings_features
+from app.ml.features import add_features, get_feature_columns
 from config import (
     TICKERS,
     MIN_CONFIDENCE,
@@ -22,9 +37,13 @@ from config import (
     TICKERS_NO_EARNINGS,
 )
 
-# Kept here because these are runtime-computed backtest results,
-# not configuration. They should eventually be read from the database
-# via database.get_win_rates_from_db() once enough outcome data exists.
+# ---------------------------------------------------------------------------
+# Historical backtest win rates (hard-coded from the last full backtest run).
+# These are runtime constants, not configuration — they belong here rather
+# than in config.py because they are computed by backtest.py and would
+# normally be read from the database once enough outcome data accumulates.
+# ---------------------------------------------------------------------------
+
 TICKER_WIN_RATES = {
     "AAPL":  {"1d": 0.639, "21d": 0.531, "63d": 0.500, "126d": 0.731},
     "MSFT":  {"1d": 0.624, "21d": 0.550, "63d": 0.529, "126d": 0.389},
@@ -38,9 +57,16 @@ TICKER_WIN_RATES = {
     "AMD":   {"1d": 0.633, "21d": 0.400, "63d": 0.900, "126d": 0.967},
 }
 
+_DB_PATH = "data/predictions.db"
 
-def setup_database():
-    conn = sqlite3.connect("data/predictions.db")
+
+# ---------------------------------------------------------------------------
+# Database setup
+# ---------------------------------------------------------------------------
+
+def setup_database() -> None:
+    """Create the signals and outcomes tables if they do not already exist."""
+    conn = sqlite3.connect(_DB_PATH)
     c    = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS signals (
@@ -77,8 +103,12 @@ def setup_database():
     conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Data fetching
+# ---------------------------------------------------------------------------
+
 def fetch_latest_data(ticker: str) -> pd.DataFrame:
-    """Fetches the last 300 trading days of OHLCV data for a ticker."""
+    """Download the last 300 trading days of OHLCV data for one ticker."""
     df = yf.download(ticker, period="300d", progress=False)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -88,38 +118,47 @@ def fetch_latest_data(ticker: str) -> pd.DataFrame:
     return df
 
 
-def apply_entry_filters(row: pd.Series, prob_up: float, ticker: str = "") -> tuple[bool, str | None]:
-    """
-    Applies entry filters to a raw buy signal.
-    Returns (passes_filter: bool, filter_reason: str | None).
+# ---------------------------------------------------------------------------
+# Entry filters
+# ---------------------------------------------------------------------------
 
-    All thresholds are sourced from config.py so backtest.py
-    uses the same values and results stay consistent.
+def apply_entry_filters(
+    row: pd.Series,
+    prob_up: float,
+    ticker: str = "",
+) -> tuple[bool, str | None]:
     """
-    # Per-ticker confidence floor
+    Apply entry quality gates to a raw buy signal.
+
+    Gates (in order of check):
+      1. Per-ticker confidence floor — signal too close to 50/50
+      2. VIX crisis          — model assumptions break down above MAX_VIX
+      3. Trend filter        — avoid buying into a confirmed downtrend
+      4. RSI overbought      — avoid chasing extended momentum
+      5. Earnings blackout   — binary event risk near earnings dates
+
+    Returns (passes: bool, reason: str | None).
+    reason is None when the signal passes all filters.
+    """
     ticker_min = TICKER_MIN_CONFIDENCE.get(ticker, MIN_CONFIDENCE)
     if prob_up < ticker_min:
         return False, f"low_confidence ({prob_up:.1%} < {ticker_min:.0%})"
 
-    # VIX crisis filter
     if "vix" in row.index:
         vix = row.get("vix", 0)
         if not pd.isna(vix) and float(vix) > MAX_VIX:
             return False, f"high_vix ({float(vix):.1f} > {MAX_VIX})"
 
-    # Trend filter — price below 50-day MA means confirmed downtrend
     if "price_to_ma50" in row.index:
         ptma = row.get("price_to_ma50", 1.0)
         if not pd.isna(ptma) and float(ptma) < 1.0:
             return False, f"below_50ma ({float(ptma):.3f})"
 
-    # RSI overbought filter
     if "rsi_14" in row.index:
         rsi = row.get("rsi_14", 50)
         if not pd.isna(rsi) and float(rsi) > RSI_OVERBOUGHT:
             return False, f"overbought_rsi ({float(rsi):.1f})"
 
-    # Earnings blackout filter
     if "days_to_earnings" in row.index:
         dte = row.get("days_to_earnings", 90)
         if not pd.isna(dte) and 0 < float(dte) <= EARNINGS_BLACKOUT_DAYS:
@@ -128,10 +167,20 @@ def apply_entry_filters(row: pd.Series, prob_up: float, ticker: str = "") -> tup
     return True, None
 
 
-def get_today_signal(ticker: str, macro_df: pd.DataFrame, sentiment: dict) -> dict | None:
+# ---------------------------------------------------------------------------
+# Per-ticker signal generation
+# ---------------------------------------------------------------------------
+
+def get_today_signal(
+    ticker: str,
+    macro_df: pd.DataFrame,
+    sentiment: dict,
+) -> dict | None:
     """
-    Loads the trained model for a ticker and generates today's signal.
-    Returns a signal dict or None if the model is missing or data is unavailable.
+    Load the trained model for one ticker and generate today's signal.
+
+    Returns a signal dict or None if the model file is missing or the
+    feature pipeline fails to produce a valid row.
     """
     model_path  = os.path.join("models", f"{ticker}_model.pkl")
     scaler_path = os.path.join("models", f"{ticker}_scaler.pkl")
@@ -187,8 +236,8 @@ def get_today_signal(ticker: str, macro_df: pd.DataFrame, sentiment: dict) -> di
     raw_signal = int(prob_up >= 0.5)
 
     horizon_map = {1: "1d", 21: "21d", 63: "63d", 126: "126d"}
-    horizon     = horizon_map.get(fwd_days, f"{fwd_days}d")
-    win_rate    = float(TICKER_WIN_RATES.get(ticker, {}).get(horizon, 0.5))
+    horizon  = horizon_map.get(fwd_days, f"{fwd_days}d")
+    win_rate = float(TICKER_WIN_RATES.get(ticker, {}).get(horizon, 0.5))
 
     latest        = df_feat.iloc[-1]
     filter_reason = None
@@ -199,6 +248,7 @@ def get_today_signal(ticker: str, macro_df: pd.DataFrame, sentiment: dict) -> di
         if not passes:
             final_signal = 0
 
+    # ── Action label ───────────────────────────────────────────────────────
     if final_signal == 1 and win_rate >= MIN_WIN_RATE:
         action = "STRONG BUY" if prob_up >= 0.7 else "BUY"
     elif raw_signal == 1 and final_signal == 0:
@@ -226,9 +276,13 @@ def get_today_signal(ticker: str, macro_df: pd.DataFrame, sentiment: dict) -> di
     }
 
 
+# ---------------------------------------------------------------------------
+# Database persistence
+# ---------------------------------------------------------------------------
+
 def save_signals(signals: list[dict]) -> None:
-    """Clears today's signals and inserts fresh ones."""
-    conn  = sqlite3.connect("data/predictions.db")
+    """Replace today's signals in the database with the newly generated ones."""
+    conn  = sqlite3.connect(_DB_PATH)
     c     = conn.cursor()
     today = str(date.today())
     c.execute("DELETE FROM signals WHERE date = ?", (today,))
@@ -251,6 +305,10 @@ def save_signals(signals: list[dict]) -> None:
     conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Console report
+# ---------------------------------------------------------------------------
+
 def print_signal_report(signals: list[dict]) -> None:
     today = datetime.now().strftime("%Y-%m-%d")
     valid = [s for s in signals if s is not None]
@@ -259,33 +317,39 @@ def print_signal_report(signals: list[dict]) -> None:
     print(f"  DAILY SIGNALS — {today}")
     print(f"  Models evaluated: {len(valid)}/{len(signals)}")
     print(f"{'═'*70}")
-    print(f"  {'Ticker':<8} {'Action':<22} {'Confidence':>11} "
-          f"{'Win rate':>10} {'Horizon':>8} {'Price':>8}")
+    print(
+        f"  {'Ticker':<8} {'Action':<22} {'Confidence':>11} "
+        f"{'Win rate':>10} {'Horizon':>8} {'Price':>8}"
+    )
     print(f"  {'─'*68}")
 
     priority = {"STRONG BUY": 0, "BUY": 1, "WEAK BUY": 2, "HOLD": 3, "AVOID": 4}
     signals_sorted = sorted(
         valid,
-        key=lambda x: (priority.get(x["action"].split("(")[0].strip(), 3), -x["prob_up"])
+        key=lambda x: (priority.get(x["action"].split("(")[0].strip(), 3), -x["prob_up"]),
     )
 
     for s in signals_sorted:
-        print(f"  {s['ticker']:<8} {s['action']:<22} "
-              f"{s['prob_up']:>11.1%} "
-              f"{s['win_rate']:>10.1%} "
-              f"{s['horizon']:>8} "
-              f"${s['close_price']:>7.2f}")
+        print(
+            f"  {s['ticker']:<8} {s['action']:<22} "
+            f"{s['prob_up']:>11.1%} "
+            f"{s['win_rate']:>10.1%} "
+            f"{s['horizon']:>8} "
+            f"${s['close_price']:>7.2f}"
+        )
 
     print(f"\n  Actionable (win rate >= {MIN_WIN_RATE:.0%}, confidence >= {MIN_CONFIDENCE:.0%}):")
     actionable = [s for s in signals_sorted if s["action"] in ("STRONG BUY", "BUY")]
 
     if actionable:
         for s in actionable:
-            print(f"  → {s['ticker']}: {s['action']} "
-                  f"| hold {s['horizon']} "
-                  f"| {s['win_rate']:.0%} win rate "
-                  f"| ${s['close_price']:.2f} "
-                  f"| confidence {s['prob_up']:.1%}")
+            print(
+                f"  → {s['ticker']}: {s['action']} "
+                f"| hold {s['horizon']} "
+                f"| {s['win_rate']:.0%} win rate "
+                f"| ${s['close_price']:.2f} "
+                f"| confidence {s['prob_up']:.1%}"
+            )
     else:
         print("  → No high-confidence buy signals today")
         for s in signals_sorted:
@@ -295,7 +359,16 @@ def print_signal_report(signals: list[dict]) -> None:
     print(f"{'═'*70}\n")
 
 
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
 def run_predictions() -> list[dict]:
+    """
+    Generate and persist today's signals for all watchlist tickers.
+
+    Called by run_predictions() in the web routes and by the CLI.
+    """
     print("Loading data for prediction...")
     macro_df  = fetch_macro()
     sentiment = load_all_sentiment()

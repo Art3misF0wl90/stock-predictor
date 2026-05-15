@@ -1,0 +1,43 @@
+[
+  {"category": "TRAINING", "key": "min_training_rows",          "value": "252",  "data_type": "INT",   "description": "Minimum rows of OHLCV history required for training"},
+  {"category": "TRAINING", "key": "holdout_fraction",           "value": "0.2",  "data_type": "FLOAT", "description": "Fraction of data reserved for holdout evaluation"},
+  {"category": "TRAINING", "key": "auc_improvement_threshold",  "value": "0.005","data_type": "FLOAT", "description": "Minimum AUC improvement required to accept a retrain"},
+  {"category": "TRAINING", "key": "xgb_n_estimators",           "value": "200",  "data_type": "INT",   "description": "XGBoost number of boosting rounds"},
+  {"category": "TRAINING", "key": "xgb_max_depth",              "value": "4",    "data_type": "INT",   "description": "XGBoost maximum tree depth"},
+  {"category": "TRAINING", "key": "xgb_learning_rate",          "value": "0.05", "data_type": "FLOAT", "description": "XGBoost learning rate"},
+  {"category": "TRAINING", "key": "logreg_max_iter",            "value": "1000", "data_type": "INT",   "description": "LogisticRegression max solver iterations"},
+  {"category": "TRAINING", "key": "default_fwd_days",           "value": "5",    "data_type": "INT",   "description": "Default forward prediction horizon in trading days"},
+
+  {"category": "SIGNALS",  "key": "vix_gate_enabled",           "value": "true", "data_type": "BOOL",  "description": "Enable VIX suppression gate"},
+  {"category": "SIGNALS",  "key": "vix_suppression_threshold",  "value": "30.0", "data_type": "FLOAT", "description": "VIX level above which signals are suppressed"},
+  {"category": "SIGNALS",  "key": "rsi_gate_enabled",           "value": "true", "data_type": "BOOL",  "description": "Enable RSI overbought/oversold gate"},
+  {"category": "SIGNALS",  "key": "rsi_overbought_threshold",   "value": "70.0", "data_type": "FLOAT", "description": "RSI above which BUY signals are suppressed"},
+  {"category": "SIGNALS",  "key": "rsi_oversold_threshold",     "value": "30.0", "data_type": "FLOAT", "description": "RSI below which SELL signals are suppressed"},
+  {"category": "SIGNALS",  "key": "earnings_gate_enabled",      "value": "true", "data_type": "BOOL",  "description": "Enable earnings blackout gate"},
+  {"category": "SIGNALS",  "key": "earnings_blackout_days",     "value": "3",    "data_type": "INT",   "description": "Trading days before earnings to suppress signals"},
+  {"category": "SIGNALS",  "key": "prob_gate_enabled",          "value": "true", "data_type": "BOOL",  "description": "Enable minimum probability gate"},
+  {"category": "SIGNALS",  "key": "min_probability_threshold",  "value": "0.55", "data_type": "FLOAT", "description": "Minimum model confidence required for a signal to pass"},
+
+  {"category": "MACRO",    "key": "correlation_threshold",      "value": "0.3",  "data_type": "FLOAT", "description": "Max correlation threshold for tier 5 vs tier 3 macro selection"},
+
+  {"category": "PORTFOLIO","key": "max_ticker_weight",          "value": "0.25", "data_type": "FLOAT", "description": "Maximum portfolio weight for any single ticker"},
+  {"category": "PORTFOLIO","key": "max_sector_weight",          "value": "0.40", "data_type": "FLOAT", "description": "Maximum portfolio weight for any single sector"},
+  {"category": "PORTFOLIO","key": "max_pair_correlation",       "value": "0.80", "data_type": "FLOAT", "description": "Maximum return correlation allowed between two positions"},
+  {"category": "PORTFOLIO","key": "correlation_lookback_days",  "value": "60",   "data_type": "INT",   "description": "Trading days of history used for pair correlation"},
+  {"category": "PORTFOLIO","key": "cash_balance",               "value": "10000.0","data_type": "FLOAT","description": "Current cash balance for portfolio valuation"},
+
+  {"category": "ALERTS",   "key": "stop_loss_pct",              "value": "0.08", "data_type": "FLOAT", "description": "Stop-loss alert threshold as decimal (0.08 = 8%)"},
+  {"category": "ALERTS",   "key": "profit_target_pct",          "value": "0.20", "data_type": "FLOAT", "description": "Profit target alert threshold as decimal (0.20 = 20%)"},
+  {"category": "ALERTS",   "key": "max_retry_attempts",         "value": "3",    "data_type": "INT",   "description": "Maximum alert delivery retry attempts"},
+  {"category": "ALERTS",   "key": "signal_change_dedup_minutes","value": "60",   "data_type": "INT",   "description": "Signal change alert deduplication window in minutes"},
+  {"category": "ALERTS",   "key": "stop_loss_dedup_minutes",    "value": "1440", "data_type": "INT",   "description": "Stop-loss alert deduplication window in minutes"},
+  {"category": "ALERTS",   "key": "profit_target_dedup_minutes","value": "1440", "data_type": "INT",   "description": "Profit target alert deduplication window in minutes"},
+  {"category": "ALERTS",   "key": "earnings_dedup_minutes",     "value": "2880", "data_type": "INT",   "description": "Earnings alert deduplication window in minutes"},
+  {"category": "ALERTS",   "key": "option_expiry_dedup_minutes","value": "2880", "data_type": "INT",   "description": "Option expiry alert deduplication window in minutes"},
+  {"category": "ALERTS",   "key": "composition_dedup_minutes",  "value": "1440", "data_type": "INT",   "description": "Portfolio composition alert deduplication window"},
+  {"category": "ALERTS",   "key": "chatbot_max_retries",        "value": "3",    "data_type": "INT",   "description": "Max Groq API retry attempts"},
+  {"category": "ALERTS",   "key": "chatbot_model",              "value": "llama-3.3-70b-versatile", "data_type": "STRING", "description": "Groq model name for chatbot"},
+
+  {"category": "SCHEDULER","key": "inference_interval_hours",   "value": "4",    "data_type": "INT",   "description": "Hours between scheduled inference runs"},
+  {"category": "SCHEDULER","key": "retrain_hour_et",            "value": "0",    "data_type": "INT",   "description": "Hour (ET) at which daily retrain runs (0 = midnight)"}
+]

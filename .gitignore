@@ -1,0 +1,10 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+*.pkl
+*.db
+data/market_cache/
+data/model_artifacts/
+.pytest_cache/
+.mypy_cache/
